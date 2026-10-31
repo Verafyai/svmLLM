@@ -354,6 +354,29 @@ python run_tests.py`;
   const AMT_IDX = { vault: 3, transfer: 2, 'spend-cap': 0 };
   const demoById = Object.fromEntries(D.demos.map((d) => [d.id, d]));
   const vBadge = (v) => `<i class="v ${v.decision}">${v.decision}</i>`;
+  function promptMeta(e) {
+    return { programId: e.program, programTitle: demoById[e.program].title, kind: e.kind, wallet: e.wallet || 'Wallet X' };
+  }
+  function reviewPrompt(vm, tx, history, meta) {
+    const rules = S.judge(vm, tx, history);
+    const prompt = S.buildPrompt(vm, tx, history, rules, meta);
+    const raw = S.simulatedComplete(prompt);
+    const parsed = JSON.parse(raw);
+    return { rules, prompt, parsed, final: S.mergeDecision(rules, parsed) };
+  }
+  function fillViewer(status, prompt, parsed) {
+    $('prompt-viewer-status').textContent = status;
+    $('prompt-text').textContent = prompt;
+    $('prompt-sim').textContent = JSON.stringify(parsed, null, 2);
+    $('prompt-sim-note').textContent = 'SIMULATED model output, no real LLM was called. The rule review is a heuristic outside the weights.';
+  }
+  function promptBlock(rules, prompt, parsed, final) {
+    const tighter = final.tightened ? `<p class="muted small">The simulated reply was looser than the rules, so the final decision stays <b>${esc(final.decision)}</b>. ${esc(final.reason)}</p>` : '';
+    return `<h4 class="small">Prompt from this run</h4><pre class="prompt-pre"></pre>
+      <div class="sim-head"><span class="tag llm">Simulated model output</span></div>
+      <pre class="prompt-pre sim"></pre>
+      <p class="muted small">SIMULATED model output, no real LLM was called.</p>${tighter}`;
+  }
   D.judge.forEach((e, i) => {
     const card = document.createElement('div'); card.className = 'card jcard';
     const s = e.verdict.signals;
@@ -365,9 +388,10 @@ python run_tests.py`;
       <div class="verdict">${vBadge(e.verdict)}<div>${esc(e.verdict.reason)}<div class="muted small">${esc(e.verdict.source)}</div></div></div>
       <div class="try"><input type="number" min="0" value="${e.tx.amount}"><button type="button">Re-run live</button></div><div class="live" aria-live="polite"></div>`;
     const inp = card.querySelector('input'), live = card.querySelector('.live'), btn = card.querySelector('button');
+    inp.addEventListener('input', () => clearRan(btn));
     btn.onclick = async () => {
       if (btn.disabled) return;
-      btn.disabled = true; btn.classList.add('busy'); btn.textContent = 'Running...';
+      btn.disabled = true; btn.classList.add('busy'); clearRan(btn); btn.textContent = 'Running...';
       const started = performance.now();
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const stamp = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
@@ -375,11 +399,16 @@ python run_tests.py`;
         const t0 = performance.now();
         const amt = BigInt(inp.value || '0'), w = e.words.map(BigInt); w[AMT_IDX[e.program]] = amt;
         const r = S.run(S.assemble(demoById[e.program].asm), S.u64s(w), 10000);
-        const v = S.judge({ status: r.status, r0: r.r0 }, { ...e.tx, amount: Number(amt) }, e.history);
+        const tx = { ...e.tx, amount: Number(amt) };
+        const rev = reviewPrompt({ status: r.status, r0: r.r0, cu: r.cu }, tx, e.history, promptMeta(e));
         const elapsed = performance.now() - t0;
         const ms = elapsed < 10 ? elapsed.toFixed(1) : String(Math.round(elapsed));
         const exitBit = r.status === 'ok' ? 'exit ' + exitHTML(r.r0) : esc(r.status);
-        live.innerHTML = `<div class="ran-now"><i>Ran</i> Ran just now, ${esc(stamp)}, ${ms} ms</div><div class="verdict flash">${vBadge(v)}<div><span class="tag ref">live reference VM</span> ${exitBit}, ${r.cu} CU<br>${esc(v.reason)}<div class="muted small">${esc(v.source)}, in your browser</div></div></div>`;
+        live.innerHTML = `<div class="ran-now"><i>Ran</i> Ran just now, ${esc(stamp)}, ${ms} ms</div><div class="verdict flash">${vBadge(rev.rules)}<div><span class="tag ref">live reference VM</span> ${exitBit}, ${r.cu} CU<br>${esc(rev.rules.reason)}<div class="muted small">${esc(rev.rules.source)}, in your browser</div></div></div>${promptBlock(rev.rules, rev.prompt, rev.parsed, rev.final)}`;
+        const pres = live.querySelectorAll('pre');
+        pres[0].textContent = rev.prompt;
+        pres[1].textContent = JSON.stringify(rev.parsed, null, 2);
+        fillViewer(`Ran just now, ${stamp}, ${ms} ms. ${e.title}. Built from the live reference interpreter in this browser.`, rev.prompt, rev.parsed);
       } catch (err) {
         const elapsed = performance.now() - started;
         const ms = elapsed < 10 ? elapsed.toFixed(1) : String(Math.round(elapsed));
@@ -389,7 +418,14 @@ python run_tests.py`;
       const remain = 280 - (performance.now() - started);
       if (remain > 0) await new Promise((resolve) => setTimeout(resolve, remain));
       btn.textContent = 'Re-run live'; btn.disabled = false; btn.classList.remove('busy');
+      if (!live.querySelector('.err')) markRan(btn);
     };
     $('jgrid').appendChild(card);
   });
+  // First paint: the withdrawal scenario, built from the recorded weights result. Not a live run.
+  const recorded = D.judge.find((e) => e.id === 'big-new-address') || D.judge[0];
+  if (recorded) {
+    const rev = reviewPrompt(recorded.vm, recorded.tx, recorded.history, promptMeta(recorded));
+    fillViewer(`Recorded weights-machine result for "${recorded.title}". Press Re-run live to run the program in this browser and rebuild the prompt.`, rev.prompt, rev.parsed);
+  }
 })();

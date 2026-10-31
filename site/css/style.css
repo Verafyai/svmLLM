@@ -91,6 +91,16 @@ textarea{width:100%;min-height:330px;resize:vertical;line-height:1.5}
 .v.allow{background:#0f3326;color:#4ff0b3}.v.hold{background:#3a2a0b;color:var(--amb)}.v.block{background:#3a1019;color:#ff7d94}
 .rules ol{margin:8px 0 0;padding-left:22px;color:#cfc9e6}.rules li{margin:3px 0}
 .jgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:14px;margin-top:16px}
+.figure{margin:18px 0 8px}
+.figure img{width:100%;height:auto;border-radius:16px;border:1px solid var(--line);background:#fff;display:block}
+.figure figcaption{color:var(--mut);font-size:13px;margin-top:8px}
+.steps{margin:8px 0 18px;padding-left:22px;color:#cfc9e6}
+.steps li{margin:6px 0}
+.prompt-viewer h3{margin:0 0 8px}
+.prompt-pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:#0c0a17;border:1px solid var(--line);border-radius:10px;padding:12px;max-height:420px;overflow:auto;margin:8px 0}
+.sim-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.jcard .kv b{overflow-wrap:anywhere}
+.jcard .prompt-pre{max-height:260px}
 .jcard{display:flex;flex-direction:column;gap:8px}.jcard h4{margin:0}.jcard p{margin:0;color:var(--mut);font-size:14px}
 .jcard .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px;font-family:var(--mono)}.jcard .kv span{color:var(--mut)}
 .jcard .verdict{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:10px;background:#0c0a17;border:1px solid var(--line);font-size:14px}
@@ -115,6 +125,7 @@ table.res{width:100%;border-collapse:collapse;font-size:15px}table.res td,table.
 table.res{width:100%;min-width:640px}
 .credits p{color:#cfc9e6}
 footer{padding:30px;text-align:center;color:var(--mut);border-top:1px solid var(--line);display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap}
+#judge-prompt{scroll-margin-top:72px}
 @media (max-width:860px){.pipeline,.jflow{flex-direction:column}.arrow{display:none}.stepper-body,.demo,.two{grid-template-columns:minmax(0,1fr)}.top nav{display:none}.meter{grid-template-columns:repeat(2,1fr)}.stepper-actions{justify-content:flex-start}}
 
 .wgrid ul li{margin-bottom:8px}

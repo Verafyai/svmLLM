@@ -165,6 +165,126 @@
     return V('allow', 'Valid by code and consistent with history.');
   }
 
-  root.SVM = { assemble, disasm, run, dec, u64s, fromHex, judge, signals, J, OPC, MM_INPUT, MM_STACK_TOP };
+  // ---------------------------------------------------------------- LLM judge prompt + simulated backend (NOT in the weights)
+  // Kept in lockstep with svllm/judge.py. tests/js_parity.mjs checks the prompt text and the canned JSON.
+  const SIMULATED_LABEL = 'SIMULATED model output, no real LLM was called';
+  const WALLET_PLACEHOLDER = 'Wallet X';
+  const SYSTEM_ROLE = 'You are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.';
+  const RULES_TEXT = 'The rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n1. Program error or nonzero exit code: block.\n2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.\n3. At least 50x the median past amount to a never-seen destination: block.\n4. At least 10x the median past amount: hold.\n5. New destination and at least 3x the median: hold.\n6. Otherwise: allow.';
+  const CANNED = [
+    { needles: ['\nAmount: 210\n', 'Receiver (destination): addr:alice-savings', 'program id: transfer', '\nexit code: 0\n', 'is this allowed?'], decision: 'allow', reason: 'The program exited 0 in 12 compute units. The amount is in line with what this wallet usually sends, and the receiver is an address it already pays. Allow it.' },
+    { needles: ['\nAmount: 20500\n', 'Receiver (destination): addr:9qZ...never-seen', 'program id: vault', '\nexit code: 0\n', 'would like to withdraw 20500'], decision: 'block', reason: 'The program allowed this withdrawal (exit code 0), but 20500 is 100x the usual amount and the destination has never been seen before. Block it.' },
+    { needles: ['\nAmount: 2400\n', 'Receiver (destination): addr:x7f3...unknown', 'program id: vault', '\nexit code: 0\n', 'would like to withdraw 2400'], decision: 'block', reason: 'The program allowed this withdrawal, but the history shows 4 withdrawals in 15 minutes moving 96% of the balance. Block it.' },
+    { needles: ['\nAmount: 1200000000\n', 'program id: spend-cap', '\nexit code: 1\n'], decision: 'block', reason: 'The program itself exited with code 1. A code-level rejection is never overridden. Block it.' },
+    { needles: ['\nAmount: 1000\n', 'Receiver (destination): addr:new-merchant', 'program id: transfer', '\nexit code: 0\n', 'is this allowed?'], decision: 'hold', reason: 'The program allowed the call, but the amount is about 4.9x the usual size and the destination has never been seen before. Hold it for a person to confirm.' },
+  ];
+
+  function numText(x) {
+    if (typeof x === 'boolean') return x ? 'yes' : 'no';
+    if (typeof x === 'number' && Number.isInteger(x)) return String(x);
+    let s = JSON.stringify(x);
+    if (s.endsWith('.0')) s = s.slice(0, -2);
+    return s;
+  }
+  function decString(v) { return BigInt(v).toString(10); }
+  function returnDataHex(r0) {
+    let n = BigInt(r0) & ((1n << 64n) - 1n), s = '';
+    for (let i = 0; i < 8; i++) { s += Number(n & 255n).toString(16).padStart(2, '0'); n >>= 8n; }
+    return s;
+  }
+  function dumpsReply(decision, reason) { return JSON.stringify({ decision, reason }); }
+  function lineValue(prompt, label) {
+    const prefix = label + ': ';
+    for (const line of prompt.split('\n')) if (line.startsWith(prefix)) return line.slice(prefix.length);
+    return '';
+  }
+  // meta: { programId, programTitle, kind, wallet, known }
+  function buildPrompt(vm, tx, hist, base, meta) {
+    const kind = meta.kind;
+    if (kind !== 'call' && kind !== 'withdraw') throw new Error('kind must be call or withdraw');
+    const wallet = meta.wallet || WALLET_PLACEHOLDER;
+    const known = (meta.known || []).slice().sort();
+    const amount = decString(tx.amount);
+    const dest = tx.destination;
+    const rows = (hist || []).slice(-20);
+    const senderLines = rows.length ? rows.map((h) => `- t=${decString(h.time)} amount=${decString(h.amount)} to=${h.destination} balance_before=${decString(h.balance_before)}`) : ['- none'];
+    const recv = rows.filter((h) => h.destination === dest);
+    const recvLines = recv.length ? recv.map((h) => `- t=${decString(h.time)} amount=${decString(h.amount)} balance_before=${decString(h.balance_before)}`) : ['- none'];
+    const seenTxt = base.signals.destination_seen_before ? 'yes' : 'no';
+    const call = `${wallet} has requested calling this Solana program "${meta.programTitle}" (program id: ${meta.programId}).`;
+    const ask = kind === 'withdraw'
+      ? `${wallet} would like to withdraw ${amount}. Based on everything you know about the context and the run rules, should that be allowed?`
+      : `${wallet} has requested calling this smart contract. Based on everything you know about the context and the run rules, is this allowed?`;
+    const lines = [
+      'SYSTEM', SYSTEM_ROLE, '',
+      'TRANSACTION REQUEST', call, ask, '',
+      `Sender (wallet): ${wallet}`,
+      `Receiver (destination): ${dest}`,
+      `Amount: ${amount}`,
+      `Time (seconds): ${decString(tx.time)}`,
+      `Balance before this request: ${decString(tx.balance_before)}`,
+      '',
+      'VM RESULT',
+      'The sBPF virtual machine has already run the program exactly. These numbers are that result.',
+      `status: ${vm.status}`,
+      `exit code: ${decString(vm.r0)}`,
+      `compute units: ${decString(vm.cu)}`,
+      `return data: ${returnDataHex(vm.r0)}`,
+      '',
+      'SENDER AND RECEIVER HISTORY',
+      'Past requests from this sender, oldest first:',
+      ...senderLines, '',
+      `Past payments to this receiver (${dest}):`,
+      ...recvLines,
+      `Destination seen before: ${seenTxt}`,
+      `Known destinations on file: ${known.length ? known.join(', ') : 'none'}`,
+      '',
+      'RUN RULES', RULES_TEXT,
+      `Rule verdict: ${base.decision}`,
+      `Rule reason: ${base.reason}`,
+      `median past amount: ${numText(base.signals.median_past_amount)}`,
+      `ratio to median: ${numText(base.signals.ratio_to_median)}`,
+      `destination seen before: ${seenTxt}`,
+      `transactions in 15 minutes: ${numText(base.signals.tx_in_window)}`,
+      `window outflow: ${numText(base.signals.window_outflow)}`,
+      `window outflow fraction: ${numText(base.signals.window_outflow_fraction)}`,
+      '',
+      'REQUIRED REPLY',
+      'Reply with one JSON object and no other text. The keys are decision and reason.',
+      '{"decision": "allow" or "hold" or "block", "reason": "short reason"}',
+    ];
+    return lines.join('\n') + '\n';
+  }
+  function fallbackReply(prompt) {
+    const decision = lineValue(prompt, 'Rule verdict');
+    const reason = lineValue(prompt, 'Rule reason');
+    const ratio = lineValue(prompt, 'ratio to median');
+    const exitCode = lineValue(prompt, 'exit code');
+    const seen = lineValue(prompt, 'destination seen before');
+    if (decision !== 'allow' && decision !== 'hold' && decision !== 'block') return { decision: 'hold', reason: 'The simulated reviewer could not read a rule verdict, so it holds the request.' };
+    let text;
+    if (reason.includes('code-level rejection') || (exitCode !== '' && exitCode !== '0' && decision === 'block')) text = `The program itself rejected this (exit code ${exitCode}). A code-level rejection is never overridden.`;
+    else if (decision === 'block' && reason.startsWith('Drain pattern')) text = `The history shows a drain. ${reason}`;
+    else if (decision === 'block') {
+      const where = seen === 'no' ? 'a destination that has never been seen' : 'a destination this wallet has used';
+      text = `The program allowed the request, but the amount is ${ratio}x the usual size and it goes to ${where}. Block it.`;
+    } else if (decision === 'hold') text = `The amount is ${ratio}x the usual size (destination seen before: ${seen}). Hold it for a person to confirm.`;
+    else text = 'The program exited 0 and the amount fits this sender and receiver history. Allow it.';
+    return { decision, reason: text };
+  }
+  function simulatedComplete(prompt) {
+    for (const spec of CANNED) if (spec.needles.every((n) => prompt.includes(n))) return dumpsReply(spec.decision, spec.reason);
+    const fb = fallbackReply(prompt);
+    return dumpsReply(fb.decision, fb.reason);
+  }
+  const RANK = { allow: 0, hold: 1, block: 2 };
+  function mergeDecision(base, model) {
+    const md = model && model.decision;
+    if (!(md in RANK)) return { decision: base.decision, reason: base.reason, tightened: false };
+    if (RANK[md] >= RANK[base.decision]) return { decision: md, reason: model.reason, tightened: false };
+    return { decision: base.decision, reason: model.reason + ' Kept the stricter rule verdict (' + base.decision + ').', tightened: true };
+  }
+
+  root.SVM = { assemble, disasm, run, dec, u64s, fromHex, judge, signals, buildPrompt, simulatedComplete, mergeDecision, SIMULATED_LABEL, J, OPC, MM_INPUT, MM_STACK_TOP };
   if (typeof module !== 'undefined') module.exports = root.SVM;
 })(typeof window !== 'undefined' ? window : globalThis);

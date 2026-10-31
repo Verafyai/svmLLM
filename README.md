@@ -10,7 +10,7 @@ Reduced sBPF programs run on hand-built attention, FFN and DeltaNet blocks: exac
 
 Solana programs compile to sBPF bytecode. SVMLLM executes that bytecode inside a neural network whose weights were constructed by hand rather than learned. Instruction fetch is a one-hot attention-style lookup, the ALU is a stack of exact lookup-table feed-forward blocks, and registers and memory live in Gated DeltaNet state configured as exact RAM, the trick introduced by [Qwenputer](https://divagr.com/blog/qwenputer). Every run is checked against a reference interpreter, and the reference interpreter is checked against Anza's [solana-sbpf](https://github.com/anza-xyz/sbpf).
 
-On top of the VM sits a **judgement filter**: after the program has run, a separate review step looks at the amount, the destination and the history, and returns allow, hold or block with a reason.
+On top of the VM sits a **judgement filter**: after the program has run, a separate review step looks at the amount, the destination and the history, and returns allow, hold or block with a reason. The examples wrap that result in a prompt. The reply in those examples is simulated. No language model is called unless you pass one in.
 
 ## Why: code that does exactly what it says
 
@@ -62,7 +62,7 @@ def add(A, B, cin):
 | Fetch, decode, ALU, branch logic, address checks, CU meter, register and memory reads and writes | The driver loop: Python calls `step()` until the halt flag is 1 |
 | | Fixed-depth circuits are Python loops over unrolled blocks rather than one fused layer stack |
 | | Lazy mode skips ALU branches whose gate is exactly 0 (full mode computes all of them and is tested equal) |
-| | The judgement filter (rules plus an LLM stub) |
+| | The judgement filter (rules plus a simulated LLM reply, unless you plug in a real model) |
 
 This is a standalone PyTorch machine in the style of Qwenputer, not yet embedded in a pretrained language model. See next steps.
 
@@ -87,12 +87,17 @@ All ten are in [`svllm/programs.py`](svllm/programs.py), each with three presets
 
 ## Judgement filter
 
-```
-sBPF program ──► VM (exact result + CU, in the weights) ──► review step (rules, NOT in the weights) ──► allow / hold / block + reason
-                                                                └─ optional LLMJudge (pluggable, stub by default)
-```
+The handoff is five steps:
 
-[`svllm/judge.py`](svllm/judge.py). The VM answers "is this valid by the code?". The review step answers "would a sensible operator let this through?". Rules, in order:
+1. A transaction arrives.
+2. The VM circuits run the program exactly.
+3. The result is wrapped into the prompt, together with the sender and receiver history and the run rules.
+4. The reviewer answers allow, hold or block, with a reason.
+5. The decision can only get stricter. It never gets looser than the rule verdict, and it never overrides a code-level rejection.
+
+<p align="center"><img src="assets/judge-handoff.png" alt="Simulated handoff: a transaction goes to the VM circuits for an exact result, that result is handed over into a prompt, and a simulated LLM judge answers allow, hold or block" width="820"></p>
+
+The VM answers "is this valid by the code?". The review step answers "would a sensible operator let this through?". The rule review is a heuristic outside the weights. It lives in [`svllm/judge.py`](svllm/judge.py). Rules, in order:
 
 1. Program error or nonzero exit code: **block** (never overrides a code-level rejection).
 2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: **block** (drain pattern).
@@ -101,17 +106,163 @@ sBPF program ──► VM (exact result + CU, in the weights) ──► review s
 5. New destination and at least 3x the median: **hold**.
 6. Otherwise **allow**.
 
-`LLMJudge(complete=fn)` builds a prompt with the VM result, the request, the history and the rule verdict, and expects JSON back. It may escalate (allow to hold or block) but never downgrades a rule block. With no backend it is a stub that returns the rule verdict, labeled as such.
+`LLMJudge(complete=fn)` builds the prompt below and expects JSON back: `{"decision": "allow"|"hold"|"block", "reason": "..."}`. `complete` is the plug-in for a real model: it takes the prompt and returns that JSON string. The default backend is `SimulatedLLM`, which returns a canned reply and does not call a model. The reply may move allow to hold or block, but it cannot make the verdict looser, and a code-level rejection stays blocked.
+
+The VM numbers in the table are from the hand-set weights machine (`results/judge_examples.json`). The prompts are built from those results. The JSON replies are simulated. One model that both runs the program and writes the review is future work, and it has not been tested.
 
 Runnable examples (`python -m svllm.judge`; the VM step is run on the weights machine in `run_tests.py`):
 
-| Example | Program | VM result (weights) | Verdict | Reason |
+| Example | Program | VM result (weights) | Rule verdict | Reason |
 |---|---|---|---|---|
 | Valid by code, 100x usual, never-seen address | `vault` | ok, exit 0, 13 CU | **BLOCK** | 100x the usual amount to a destination never seen before. Valid by code, but a sensible operator would stop it. |
 | Normal transfer to a known address | `transfer` | ok, exit 0, 12 CU | **ALLOW** | Valid by code and consistent with history. |
 | Rapid repeated drain | `vault` | ok, exit 0, 13 CU | **BLOCK** | Drain pattern: 4 withdrawals in 15 minutes moving 96% of the balance. Each one passed the code checks. |
 | Spend cap: over $1B | `spend-cap` | ok, exit 1, 5 CU | **BLOCK** | The program itself rejected this (exit code 1). The judge never overrides a code-level rejection. |
 | Moderate amount, new address | `transfer` | ok, exit 0, 12 CU | **HOLD** | New destination and 4.9x the usual amount. Hold for confirmation. |
+
+### Worked example: calling a program (allow)
+
+Wallet X asks to call the balance-transfer program. The history is the usual pattern for this wallet: amounts around 200 to addresses it already pays. Addresses below are placeholders.
+
+```
+SYSTEM
+You are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.
+
+TRANSACTION REQUEST
+Wallet X has requested calling this Solana program "Balance transfer" (program id: transfer).
+Wallet X has requested calling this smart contract. Based on everything you know about the context and the run rules, is this allowed?
+
+Sender (wallet): Wallet X
+Receiver (destination): addr:alice-savings
+Amount: 210
+Time (seconds): 864000
+Balance before this request: 1000000
+
+VM RESULT
+The sBPF virtual machine has already run the program exactly. These numbers are that result.
+status: ok
+exit code: 0
+compute units: 12
+return data: 0000000000000000
+
+SENDER AND RECEIVER HISTORY
+Past requests from this sender, oldest first:
+- t=0 amount=200 to=addr:alice-savings balance_before=1000000
+- t=86400 amount=150 to=addr:landlord balance_before=999800
+- t=172800 amount=250 to=addr:alice-savings balance_before=999650
+- t=259200 amount=180 to=addr:grocer balance_before=999400
+- t=345600 amount=220 to=addr:alice-savings balance_before=999220
+- t=432000 amount=210 to=addr:landlord balance_before=999000
+
+Past payments to this receiver (addr:alice-savings):
+- t=0 amount=200 balance_before=1000000
+- t=172800 amount=250 balance_before=999650
+- t=345600 amount=220 balance_before=999220
+Destination seen before: yes
+Known destinations on file: none
+
+RUN RULES
+The rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.
+1. Program error or nonzero exit code: block.
+2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.
+3. At least 50x the median past amount to a never-seen destination: block.
+4. At least 10x the median past amount: hold.
+5. New destination and at least 3x the median: hold.
+6. Otherwise: allow.
+Rule verdict: allow
+Rule reason: Valid by code and consistent with history.
+median past amount: 205
+ratio to median: 1.02
+destination seen before: yes
+transactions in 15 minutes: 1
+window outflow: 210
+window outflow fraction: 0
+
+REQUIRED REPLY
+Reply with one JSON object and no other text. The keys are decision and reason.
+{"decision": "allow" or "hold" or "block", "reason": "short reason"}
+```
+
+SIMULATED model output, no real LLM was called:
+
+```json
+{"decision":"allow","reason":"The program exited 0 in 12 compute units. The amount is in line with what this wallet usually sends, and the receiver is an address it already pays. Allow it."}
+```
+
+### Worked example: withdrawal (block)
+
+Wallet X asks to withdraw 20500 from the vault. The program exits 0, so the code allows it. The amount is 100x the usual size, and the destination has never been seen. Addresses below are placeholders.
+
+```
+SYSTEM
+You are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.
+
+TRANSACTION REQUEST
+Wallet X has requested calling this Solana program "Vault with withdrawal limit" (program id: vault).
+Wallet X would like to withdraw 20500. Based on everything you know about the context and the run rules, should that be allowed?
+
+Sender (wallet): Wallet X
+Receiver (destination): addr:9qZ...never-seen
+Amount: 20500
+Time (seconds): 864000
+Balance before this request: 1000000
+
+VM RESULT
+The sBPF virtual machine has already run the program exactly. These numbers are that result.
+status: ok
+exit code: 0
+compute units: 13
+return data: 0000000000000000
+
+SENDER AND RECEIVER HISTORY
+Past requests from this sender, oldest first:
+- t=0 amount=200 to=addr:alice-savings balance_before=1000000
+- t=86400 amount=150 to=addr:landlord balance_before=999800
+- t=172800 amount=250 to=addr:alice-savings balance_before=999650
+- t=259200 amount=180 to=addr:grocer balance_before=999400
+- t=345600 amount=220 to=addr:alice-savings balance_before=999220
+- t=432000 amount=210 to=addr:landlord balance_before=999000
+
+Past payments to this receiver (addr:9qZ...never-seen):
+- none
+Destination seen before: no
+Known destinations on file: none
+
+RUN RULES
+The rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.
+1. Program error or nonzero exit code: block.
+2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.
+3. At least 50x the median past amount to a never-seen destination: block.
+4. At least 10x the median past amount: hold.
+5. New destination and at least 3x the median: hold.
+6. Otherwise: allow.
+Rule verdict: block
+Rule reason: 100x the usual amount to a destination never seen before. Valid by code, but a sensible operator would stop it.
+median past amount: 205
+ratio to median: 100
+destination seen before: no
+transactions in 15 minutes: 1
+window outflow: 20500
+window outflow fraction: 0.021
+
+REQUIRED REPLY
+Reply with one JSON object and no other text. The keys are decision and reason.
+{"decision": "allow" or "hold" or "block", "reason": "short reason"}
+```
+
+<p align="center"><img src="assets/judge-prompt-withdrawal.png" alt="Simulated withdrawal example: the prompt wraps the exact VM result, and the simulated model output blocks the withdrawal because 20500 is 100x the usual amount and the destination has never been seen" width="820"></p>
+
+SIMULATED model output, no real LLM was called:
+
+```json
+{"decision":"block","reason":"The program allowed this withdrawal (exit code 0), but 20500 is 100x the usual amount and the destination has never been seen before. Block it."}
+```
+
+The other three scenarios use the same prompt builder and the same simulated backend (SIMULATED model output, no real LLM was called):
+
+- Rapid drain: `{"decision":"block","reason":"The program allowed this withdrawal, but the history shows 4 withdrawals in 15 minutes moving 96% of the balance. Block it."}`
+- Spend cap, exit code 1: `{"decision":"block","reason":"The program itself exited with code 1. A code-level rejection is never overridden. Block it."}`
+- Moderate amount, new address: `{"decision":"hold","reason":"The program allowed the call, but the amount is about 4.9x the usual size and the destination has never been seen before. Hold it for a person to confirm."}`
 
 ## Quickstart
 
@@ -124,7 +275,7 @@ python -m svllm.judge                   # judgement-filter examples
 (cd xcheck && cargo build --release)    # optional: solana-sbpf 0.12 cross-check binary
 python run_tests.py                     # all suites; writes results/
 python export_site.py                  # regenerate site/js/data.js from results/
-node tests/js_parity.mjs               # browser interpreter and judge vs Python
+node tests/js_parity.mjs               # browser interpreter, judge, and prompt vs Python
 ```
 
 `N_RANDOM` and `N_FULL` environment variables size the random and full-mode suites.
@@ -139,14 +290,14 @@ node tests/js_parity.mjs               # browser interpreter and judge vs Python
 
 - Full mode (no lazy branch skipping) equals lazy mode: **32/32** (first 16 conformance + first 16 random).
 - Random-program outcomes: ok 551, DivideByZero 201, ExceededMaxInstructions 159, AccessViolation 89.
-- Browser JS interpreter vs Python reference: **565/565** cases, assembler 10/10, judge 5/5 (`tests/js_parity.mjs`).
+- Browser JS interpreter vs Python reference: **565/565** cases, assembler 10/10, judge 5/5, prompt text 5/5, simulated replies 5/5 (`tests/js_parity.mjs`).
 - Weights: 1,130,672 constant parameters, none trained.
 
 Cross-check details: [`xcheck/`](xcheck) drives Anza's `solana-sbpf` 0.12 interpreter with `SBPFVersion::V0`, `r1` at the input region and only the top 128 bytes of the first stack frame mapped, so its memory model matches the toy. Status, r0, CU and the input window are compared (its registers after a run are not exposed reliably). The weights machine is compared against the reference on status, r0, CU, all 11 registers and both memory windows. The one conformance case not run on solana-sbpf is `misc/call-stub`, because `call` is a local stub.
 
 ## The site
 
-A static demo site (plain HTML, CSS and JS, no build step) lives in [`site/`](site) (serve it with `python -m http.server -d site`). It has the ten demos with presets, a Run button, step traces and CU counts, a paste-your-own box (256 instructions, 8 KB), the judgement-filter examples, and an animated walkthrough that steps through real recorded traces of the weights machine. Results are labeled honestly: **live** runs use a JavaScript port of the reference interpreter in your browser; **weights** results are precomputed traces from the PyTorch runs (`results/weights_traces.json`).
+A static demo site (plain HTML, CSS and JS, no build step) lives in [`site/`](site) (serve it with `python -m http.server -d site`). It has the ten demos with presets, a Run button, step traces and CU counts, a paste-your-own box (256 instructions, 8 KB), the judgement-filter examples, a prompt viewer for the simulated judge, and an animated walkthrough that steps through real recorded traces of the weights machine. Results are labeled honestly: **live** runs use a JavaScript port of the reference interpreter in your browser; **weights** results are precomputed traces from the PyTorch runs (`results/weights_traces.json`). The judge reply on the site is simulated.
 
 ## Where this could run
 
@@ -176,6 +327,7 @@ The judgement filter is illustrative heuristics on synthetic histories, not a se
 - It is slow: CPU PyTorch on one thread, about 5 ms per simple instruction and roughly 65 ms for div or mod (lazy mode; full mode is slower). A research demo, not a validator.
 - The driver loop and the circuit sequencing are Python. The judgement filter is heuristics, not learned and not in the weights.
 - Not yet inside a pretrained LLM.
+- The judge examples and the demo site use a simulated reply (`SIMULATED model output, no real LLM was called`). No language model is called unless you pass `complete` to `LLMJudge`. A single model that both runs the program and writes the review has not been built or tested.
 
 ## Future possibilities
 

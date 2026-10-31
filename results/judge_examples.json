@@ -72,6 +72,16 @@
     "window_outflow_fraction": 0.021
    },
    "source": "rules (heuristics, not in the weights)"
+  },
+  "kind": "withdraw",
+  "wallet": "Wallet X",
+  "program_title": "Vault with withdrawal limit",
+  "prompt": "SYSTEM\nYou are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n\nTRANSACTION REQUEST\nWallet X has requested calling this Solana program \"Vault with withdrawal limit\" (program id: vault).\nWallet X would like to withdraw 20500. Based on everything you know about the context and the run rules, should that be allowed?\n\nSender (wallet): Wallet X\nReceiver (destination): addr:9qZ...never-seen\nAmount: 20500\nTime (seconds): 864000\nBalance before this request: 1000000\n\nVM RESULT\nThe sBPF virtual machine has already run the program exactly. These numbers are that result.\nstatus: ok\nexit code: 0\ncompute units: 13\nreturn data: 0000000000000000\n\nSENDER AND RECEIVER HISTORY\nPast requests from this sender, oldest first:\n- t=0 amount=200 to=addr:alice-savings balance_before=1000000\n- t=86400 amount=150 to=addr:landlord balance_before=999800\n- t=172800 amount=250 to=addr:alice-savings balance_before=999650\n- t=259200 amount=180 to=addr:grocer balance_before=999400\n- t=345600 amount=220 to=addr:alice-savings balance_before=999220\n- t=432000 amount=210 to=addr:landlord balance_before=999000\n\nPast payments to this receiver (addr:9qZ...never-seen):\n- none\nDestination seen before: no\nKnown destinations on file: none\n\nRUN RULES\nThe rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n1. Program error or nonzero exit code: block.\n2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.\n3. At least 50x the median past amount to a never-seen destination: block.\n4. At least 10x the median past amount: hold.\n5. New destination and at least 3x the median: hold.\n6. Otherwise: allow.\nRule verdict: block\nRule reason: 100x the usual amount to a destination never seen before. Valid by code, but a sensible operator would stop it.\nmedian past amount: 205\nratio to median: 100\ndestination seen before: no\ntransactions in 15 minutes: 1\nwindow outflow: 20500\nwindow outflow fraction: 0.021\n\nREQUIRED REPLY\nReply with one JSON object and no other text. The keys are decision and reason.\n{\"decision\": \"allow\" or \"hold\" or \"block\", \"reason\": \"short reason\"}\n",
+  "simulated": {
+   "decision": "block",
+   "reason": "The program allowed this withdrawal (exit code 0), but 20500 is 100x the usual amount and the destination has never been seen before. Block it.",
+   "source": "SIMULATED model output, no real LLM was called",
+   "output": "{\"decision\":\"block\",\"reason\":\"The program allowed this withdrawal (exit code 0), but 20500 is 100x the usual amount and the destination has never been seen before. Block it.\"}"
   }
  },
  {
@@ -146,6 +156,16 @@
     "window_outflow_fraction": 0.0
    },
    "source": "rules (heuristics, not in the weights)"
+  },
+  "kind": "call",
+  "wallet": "Wallet X",
+  "program_title": "Balance transfer",
+  "prompt": "SYSTEM\nYou are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n\nTRANSACTION REQUEST\nWallet X has requested calling this Solana program \"Balance transfer\" (program id: transfer).\nWallet X has requested calling this smart contract. Based on everything you know about the context and the run rules, is this allowed?\n\nSender (wallet): Wallet X\nReceiver (destination): addr:alice-savings\nAmount: 210\nTime (seconds): 864000\nBalance before this request: 1000000\n\nVM RESULT\nThe sBPF virtual machine has already run the program exactly. These numbers are that result.\nstatus: ok\nexit code: 0\ncompute units: 12\nreturn data: 0000000000000000\n\nSENDER AND RECEIVER HISTORY\nPast requests from this sender, oldest first:\n- t=0 amount=200 to=addr:alice-savings balance_before=1000000\n- t=86400 amount=150 to=addr:landlord balance_before=999800\n- t=172800 amount=250 to=addr:alice-savings balance_before=999650\n- t=259200 amount=180 to=addr:grocer balance_before=999400\n- t=345600 amount=220 to=addr:alice-savings balance_before=999220\n- t=432000 amount=210 to=addr:landlord balance_before=999000\n\nPast payments to this receiver (addr:alice-savings):\n- t=0 amount=200 balance_before=1000000\n- t=172800 amount=250 balance_before=999650\n- t=345600 amount=220 balance_before=999220\nDestination seen before: yes\nKnown destinations on file: none\n\nRUN RULES\nThe rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n1. Program error or nonzero exit code: block.\n2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.\n3. At least 50x the median past amount to a never-seen destination: block.\n4. At least 10x the median past amount: hold.\n5. New destination and at least 3x the median: hold.\n6. Otherwise: allow.\nRule verdict: allow\nRule reason: Valid by code and consistent with history.\nmedian past amount: 205\nratio to median: 1.02\ndestination seen before: yes\ntransactions in 15 minutes: 1\nwindow outflow: 210\nwindow outflow fraction: 0\n\nREQUIRED REPLY\nReply with one JSON object and no other text. The keys are decision and reason.\n{\"decision\": \"allow\" or \"hold\" or \"block\", \"reason\": \"short reason\"}\n",
+  "simulated": {
+   "decision": "allow",
+   "reason": "The program exited 0 in 12 compute units. The amount is in line with what this wallet usually sends, and the receiver is an address it already pays. Allow it.",
+   "source": "SIMULATED model output, no real LLM was called",
+   "output": "{\"decision\":\"allow\",\"reason\":\"The program exited 0 in 12 compute units. The amount is in line with what this wallet usually sends, and the receiver is an address it already pays. Allow it.\"}"
   }
  },
  {
@@ -239,6 +259,16 @@
     "window_outflow_fraction": 0.96
    },
    "source": "rules (heuristics, not in the weights)"
+  },
+  "kind": "withdraw",
+  "wallet": "Wallet X",
+  "program_title": "Vault with withdrawal limit",
+  "prompt": "SYSTEM\nYou are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n\nTRANSACTION REQUEST\nWallet X has requested calling this Solana program \"Vault with withdrawal limit\" (program id: vault).\nWallet X would like to withdraw 2400. Based on everything you know about the context and the run rules, should that be allowed?\n\nSender (wallet): Wallet X\nReceiver (destination): addr:x7f3...unknown\nAmount: 2400\nTime (seconds): 864000\nBalance before this request: 2800\n\nVM RESULT\nThe sBPF virtual machine has already run the program exactly. These numbers are that result.\nstatus: ok\nexit code: 0\ncompute units: 13\nreturn data: 0000000000000000\n\nSENDER AND RECEIVER HISTORY\nPast requests from this sender, oldest first:\n- t=0 amount=200 to=addr:alice-savings balance_before=1000000\n- t=86400 amount=150 to=addr:landlord balance_before=999800\n- t=172800 amount=250 to=addr:alice-savings balance_before=999650\n- t=259200 amount=180 to=addr:grocer balance_before=999400\n- t=345600 amount=220 to=addr:alice-savings balance_before=999220\n- t=432000 amount=210 to=addr:landlord balance_before=999000\n- t=863400 amount=2400 to=addr:x7f3...unknown balance_before=10000\n- t=863580 amount=2400 to=addr:x7f3...unknown balance_before=7600\n- t=863760 amount=2400 to=addr:x7f3...unknown balance_before=5200\n\nPast payments to this receiver (addr:x7f3...unknown):\n- t=863400 amount=2400 balance_before=10000\n- t=863580 amount=2400 balance_before=7600\n- t=863760 amount=2400 balance_before=5200\nDestination seen before: yes\nKnown destinations on file: none\n\nRUN RULES\nThe rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n1. Program error or nonzero exit code: block.\n2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.\n3. At least 50x the median past amount to a never-seen destination: block.\n4. At least 10x the median past amount: hold.\n5. New destination and at least 3x the median: hold.\n6. Otherwise: allow.\nRule verdict: block\nRule reason: Drain pattern: 4 withdrawals in 15 minutes moving 96% of the balance. Each one passed the code checks.\nmedian past amount: 220\nratio to median: 10.91\ndestination seen before: yes\ntransactions in 15 minutes: 4\nwindow outflow: 9600\nwindow outflow fraction: 0.96\n\nREQUIRED REPLY\nReply with one JSON object and no other text. The keys are decision and reason.\n{\"decision\": \"allow\" or \"hold\" or \"block\", \"reason\": \"short reason\"}\n",
+  "simulated": {
+   "decision": "block",
+   "reason": "The program allowed this withdrawal, but the history shows 4 withdrawals in 15 minutes moving 96% of the balance. Block it.",
+   "source": "SIMULATED model output, no real LLM was called",
+   "output": "{\"decision\":\"block\",\"reason\":\"The program allowed this withdrawal, but the history shows 4 withdrawals in 15 minutes moving 96% of the balance. Block it.\"}"
   }
  },
  {
@@ -311,6 +341,16 @@
     "window_outflow_fraction": 0.24
    },
    "source": "rules (heuristics, not in the weights)"
+  },
+  "kind": "call",
+  "wallet": "Wallet X",
+  "program_title": "Spend cap",
+  "prompt": "SYSTEM\nYou are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n\nTRANSACTION REQUEST\nWallet X has requested calling this Solana program \"Spend cap\" (program id: spend-cap).\nWallet X has requested calling this smart contract. Based on everything you know about the context and the run rules, is this allowed?\n\nSender (wallet): Wallet X\nReceiver (destination): addr:treasury-2\nAmount: 1200000000\nTime (seconds): 864000\nBalance before this request: 5000000000\n\nVM RESULT\nThe sBPF virtual machine has already run the program exactly. These numbers are that result.\nstatus: ok\nexit code: 1\ncompute units: 5\nreturn data: 0100000000000000\n\nSENDER AND RECEIVER HISTORY\nPast requests from this sender, oldest first:\n- t=0 amount=200 to=addr:alice-savings balance_before=1000000\n- t=86400 amount=150 to=addr:landlord balance_before=999800\n- t=172800 amount=250 to=addr:alice-savings balance_before=999650\n- t=259200 amount=180 to=addr:grocer balance_before=999400\n- t=345600 amount=220 to=addr:alice-savings balance_before=999220\n- t=432000 amount=210 to=addr:landlord balance_before=999000\n\nPast payments to this receiver (addr:treasury-2):\n- none\nDestination seen before: no\nKnown destinations on file: none\n\nRUN RULES\nThe rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n1. Program error or nonzero exit code: block.\n2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.\n3. At least 50x the median past amount to a never-seen destination: block.\n4. At least 10x the median past amount: hold.\n5. New destination and at least 3x the median: hold.\n6. Otherwise: allow.\nRule verdict: block\nRule reason: The program itself rejected this (exit code 1). The judge never overrides a code-level rejection.\nmedian past amount: 205\nratio to median: 5853658.54\ndestination seen before: no\ntransactions in 15 minutes: 1\nwindow outflow: 1200000000\nwindow outflow fraction: 0.24\n\nREQUIRED REPLY\nReply with one JSON object and no other text. The keys are decision and reason.\n{\"decision\": \"allow\" or \"hold\" or \"block\", \"reason\": \"short reason\"}\n",
+  "simulated": {
+   "decision": "block",
+   "reason": "The program itself exited with code 1. A code-level rejection is never overridden. Block it.",
+   "source": "SIMULATED model output, no real LLM was called",
+   "output": "{\"decision\":\"block\",\"reason\":\"The program itself exited with code 1. A code-level rejection is never overridden. Block it.\"}"
   }
  },
  {
@@ -385,6 +425,16 @@
     "window_outflow_fraction": 0.001
    },
    "source": "rules (heuristics, not in the weights)"
+  },
+  "kind": "call",
+  "wallet": "Wallet X",
+  "program_title": "Balance transfer",
+  "prompt": "SYSTEM\nYou are the transaction reviewer for a wallet. The sBPF virtual machine has already run the program exactly. Decide allow, hold or block based on everything you know about the sender and the receiver and the run rules. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n\nTRANSACTION REQUEST\nWallet X has requested calling this Solana program \"Balance transfer\" (program id: transfer).\nWallet X has requested calling this smart contract. Based on everything you know about the context and the run rules, is this allowed?\n\nSender (wallet): Wallet X\nReceiver (destination): addr:new-merchant\nAmount: 1000\nTime (seconds): 864000\nBalance before this request: 1000000\n\nVM RESULT\nThe sBPF virtual machine has already run the program exactly. These numbers are that result.\nstatus: ok\nexit code: 0\ncompute units: 12\nreturn data: 0000000000000000\n\nSENDER AND RECEIVER HISTORY\nPast requests from this sender, oldest first:\n- t=0 amount=200 to=addr:alice-savings balance_before=1000000\n- t=86400 amount=150 to=addr:landlord balance_before=999800\n- t=172800 amount=250 to=addr:alice-savings balance_before=999650\n- t=259200 amount=180 to=addr:grocer balance_before=999400\n- t=345600 amount=220 to=addr:alice-savings balance_before=999220\n- t=432000 amount=210 to=addr:landlord balance_before=999000\n\nPast payments to this receiver (addr:new-merchant):\n- none\nDestination seen before: no\nKnown destinations on file: none\n\nRUN RULES\nThe rule review is a heuristic outside the weights. You may only make the decision stricter, never looser than the rule verdict, and you never override a code-level rejection.\n1. Program error or nonzero exit code: block.\n2. More than 3 withdrawals in 15 minutes moving at least 50% of the balance: block.\n3. At least 50x the median past amount to a never-seen destination: block.\n4. At least 10x the median past amount: hold.\n5. New destination and at least 3x the median: hold.\n6. Otherwise: allow.\nRule verdict: hold\nRule reason: New destination and 4.9x the usual amount. Hold for confirmation.\nmedian past amount: 205\nratio to median: 4.88\ndestination seen before: no\ntransactions in 15 minutes: 1\nwindow outflow: 1000\nwindow outflow fraction: 0.001\n\nREQUIRED REPLY\nReply with one JSON object and no other text. The keys are decision and reason.\n{\"decision\": \"allow\" or \"hold\" or \"block\", \"reason\": \"short reason\"}\n",
+  "simulated": {
+   "decision": "hold",
+   "reason": "The program allowed the call, but the amount is about 4.9x the usual size and the destination has never been seen before. Hold it for a person to confirm.",
+   "source": "SIMULATED model output, no real LLM was called",
+   "output": "{\"decision\":\"hold\",\"reason\":\"The program allowed the call, but the amount is about 4.9x the usual size and the destination has never been seen before. Hold it for a person to confirm.\"}"
   }
  }
 ]
