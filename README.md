@@ -197,6 +197,14 @@ The judgement filter is illustrative heuristics on synthetic histories, not a se
 3. Two routes for sBPF. **(a) Firmware route, no new weights:** write an sBPF interpreter in C, build it for RV32IM, and run it as firmware on the CPU that already sits in Qwenputer's weights. Validate with this repo's conformance and random suites. **(b) Native route:** express SVMLLM's circuits in Qwenputer's circuit compiler (attention heads for fetch, FFN units for the ALU tables, DeltaNet heads for program, registers and memory), emitting ADDR, VAL and STEP tokens per instruction, as extra layers alongside the RISC-V ones.
 4. Run `run_tests.py` against the embedded version and require the same pass rates. Then wire the judgement filter to Qwen itself through `LLMJudge(complete=...)`, so one model runs the program exactly and reviews the result.
 
+## Support
+
+Drop me some Solana if you want to support me to keep working on this.
+
+```
+86pEFG22pV4hd9wH48TSnATLo8U9bAraM8C58NAmPtuy
+```
+
 ## Credits
 
 - [Qwenputer](https://divagr.com/blog/qwenputer) by divagr1925: a RISC-V CPU compiled into Qwen3.5-4B with Gated DeltaNet layers as exact RAM. [Announcement](https://x.com/divagr1925/status/2115394340357116169), [weights on Hugging Face](https://huggingface.co/divagr1925/Qwen3.5-4B-Qwenputer). SVMLLM borrows the central idea (gate 1, beta 1, one-hot keys) and applies it to sBPF.
