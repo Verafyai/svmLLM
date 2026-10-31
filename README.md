@@ -3,7 +3,7 @@
 <h1 align="center">SVMLLM</h1>
 <p align="center"><b>A Solana VM compiled into transformer weights.</b><br>
 Reduced sBPF programs run on hand-built attention, FFN and DeltaNet blocks: exact results, exact compute units, zero training.</p>
-<p align="center"><a href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a></p>
+<p align="center"><a href="https://svmllm.rexstjohn.com">Live demo: svmllm.rexstjohn.com</a> | <a href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a></p>
 
 ---
 
@@ -181,7 +181,7 @@ A static demo site (plain HTML, CSS and JS, no build step) lives in [`site/`](si
 
 - [Qwenputer](https://divagr.com/blog/qwenputer) by divagr1925: a RISC-V CPU compiled into Qwen3.5-4B with Gated DeltaNet layers as exact RAM. [Announcement](https://x.com/divagr1925/status/2115394340357116169), [weights on Hugging Face](https://huggingface.co/divagr1925/Qwen3.5-4B-Qwenputer). SVMLLM borrows the central idea (gate 1, beta 1, one-hot keys) and applies it to sBPF.
 - Anza's [solana-sbpf](https://github.com/anza-xyz/sbpf) for the reference VM used in cross-checking.
-- Sibling project: EVM in an LLM.
+- Sibling project: [EVMLLM](https://github.com/Verafyai/evmLLM), an Ethereum VM executed by transformer weights ([evmllm.rexstjohn.com](https://evmllm.rexstjohn.com)).
 
 ## License
 
