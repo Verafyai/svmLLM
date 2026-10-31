@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SVMLLM: a Solana VM compiled into transformer weights</title>
+<meta name="description" content="SVMLLM runs reduced sBPF (the Solana VM bytecode) inside hand-built transformer weights: attention fetches, FFNs compute, DeltaNet state is exact RAM. No training.">
+<meta property="og:title" content="SVMLLM: a Solana VM compiled into transformer weights">
+<meta property="og:description" content="sBPF programs executed by hand-built transformer weights, with exact results and compute-unit counts, plus a judgement filter that reviews outcomes.">
+<meta property="og:image" content="assets/og.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="assets/og.png">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#"><img src="assets/svmllm-mark-transparent.png" alt="" width="30" height="30"><span>SVMLLM</span></a>
+  <nav>
+    <a href="#how">How it works</a><a href="#demos">Demos</a><a href="#judge">Judgement filter</a><a href="#results">Results</a><a href="#run">Run it</a>
+    <a class="gh" href="https://github.com/Verafyai/svmLLM">GitHub</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <svg class="hero-bg" viewBox="0 0 1440 760" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <radialGradient id="gP" cx="22%" cy="20%" r="55%"><stop offset="0" stop-color="#882BED" stop-opacity=".55"/><stop offset="1" stop-color="#882BED" stop-opacity="0"/></radialGradient>
+      <radialGradient id="gG" cx="82%" cy="62%" r="50%"><stop offset="0" stop-color="#17C38B" stop-opacity=".38"/><stop offset="1" stop-color="#17C38B" stop-opacity="0"/></radialGradient>
+      <linearGradient id="gLine" x1="0" x2="1"><stop offset="0" stop-color="#882BED"/><stop offset=".5" stop-color="#43A8B2"/><stop offset="1" stop-color="#17C38B"/></linearGradient>
+      <pattern id="hex" width="56" height="97" patternUnits="userSpaceOnUse" patternTransform="scale(.9)">
+        <path d="M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z M28 64 L28 97" fill="none" stroke="#ffffff" stroke-opacity=".05" stroke-width="1"/>
+      </pattern>
+      <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
+      <mask id="m"><rect width="1440" height="760" fill="url(#fade)"/></mask>
+    </defs>
+    <g mask="url(#m)">
+      <rect width="1440" height="760" fill="url(#gP)"/>
+      <rect width="1440" height="760" fill="url(#gG)"/>
+      <rect width="1440" height="760" fill="url(#hex)"/>
+      <g class="streams" stroke="url(#gLine)" stroke-width="1.4" fill="none" opacity=".55">
+        <path d="M-20 520 C 300 440, 520 600, 820 500 S 1300 380, 1460 430"/>
+        <path d="M-20 580 C 340 520, 600 660, 900 560 S 1280 470, 1460 500"/>
+        <path d="M-20 460 C 260 380, 560 520, 860 430 S 1260 320, 1460 360"/>
+      </g>
+      <g class="bits" font-family="ui-monospace,monospace" font-size="13" fill="#cfc8ff" opacity=".22">
+        <text x="90" y="140">ldxdw r2, [r1+0]</text><text x="1120" y="120">lddw r3, 1000000000</text>
+        <text x="1180" y="300">jgt r2, r3, over_cap</text><text x="60" y="330">mov64 r0, 0</text><text x="980" y="640">exit</text>
+      </g>
+    </g>
+  </svg>
+  <div class="hero-in">
+    <img class="hero-logo" src="assets/svmllm-logo-transparent.png" alt="SVMLLM logo" width="260">
+    <h1>A Solana VM compiled into <span class="grad">transformer weights</span></h1>
+    <p class="lede">SVMLLM runs reduced sBPF, the bytecode of Solana programs, inside hand-constructed transformer components. Attention-style lookups fetch and decode instructions, ReLU feed-forward blocks are the ALU, and Gated DeltaNet state is exact RAM for registers and memory. Nothing is trained. Every result is checked against a reference interpreter and Anza's solana-sbpf.</p>
+    <div class="cta"><a class="btn primary" href="#demos">Run the demos</a><a class="btn" href="#how">See how it works</a><a class="btn ghost" href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a></div>
+    <div class="chips" id="hero-chips"></div>
+  </div>
+</section>
+
+<main>
+<section id="how" class="wrap">
+  <h2>How it works</h2>
+  <p class="sub">One sBPF instruction is one pass through a fixed stack of hand-built blocks. Step through a real recorded run of the weights machine below; every value comes from <code>results/weights_traces.json</code>.</p>
+  <div class="pipeline" id="pipeline">
+    <div class="stage" data-stage="0"><div class="n">1</div><h4>sBPF program</h4><p>8-byte instructions written into a DeltaNet program memory with one-hot keys.</p></div>
+    <div class="arrow"></div>
+    <div class="stage" data-stage="1"><div class="n">2</div><h4>Fetch and decode</h4><p>PC becomes a one-hot query; the read is attention over program slots. Decode is one linear layer.</p></div>
+    <div class="arrow"></div>
+    <div class="stage" data-stage="2"><div class="n">3</div><h4>ALU in the FFN</h4><p>Exact lookup-table FFNs over 4-bit limbs: ripple adders, multipliers, shifters, comparators.</p></div>
+    <div class="arrow"></div>
+    <div class="stage" data-stage="3"><div class="n">4</div><h4>Exact RAM</h4><p>Registers and memory are Gated DeltaNet state, gate 1, beta 0 or 1: an overwrite, never a blend.</p></div>
+    <div class="arrow"></div>
+    <div class="stage" data-stage="4"><div class="n">5</div><h4>Exit and CU</h4><p>A 24-bit CU counter ticks once per instruction; exit or an error flag halts the driver loop.</p></div>
+  </div>
+  <div class="stepper card">
+    <div class="stepper-head">
+      <div><span class="tag weights">Precomputed: weights machine run</span> <select id="ex-prog"></select></div>
+      <div class="ctrl"><button id="ex-back">Back</button><button id="ex-play" class="primary">Play</button><button id="ex-step">Step</button><button id="ex-reset">Reset</button></div>
+    </div>
+    <div class="stepper-body">
+      <pre class="asm" id="ex-asm"></pre>
+      <div class="state">
+        <div class="meter"><div><label>PC</label><b id="ex-pc">0</b></div><div><label>CU</label><b id="ex-cu">0</b></div><div><label>step</label><b id="ex-n">0</b></div><div><label>status</label><b id="ex-status">ready</b></div></div>
+        <div class="regs" id="ex-regs"></div>
+        <div class="limbs"><label>r0 as the network sees it: 16 one-hot 4-bit limbs (256 activations, each exactly 0 or 1)</label><div id="ex-limbs"></div></div>
+        <p class="note" id="ex-note"></p>
+      </div>
+    </div>
+  </div>
+  <div class="codetabs card" id="codetabs">
+    <div class="tabs"><button data-t="asm" class="on">sBPF asm</button><button data-t="rust">Rust (equivalent)</button><button data-t="lut">PyTorch: LUT FFN</button><button data-t="deltanet">PyTorch: DeltaNet RAM</button><button data-t="fetch">PyTorch: fetch + decode</button><button data-t="alu">PyTorch: ALU</button><button data-t="write">PyTorch: writes</button><button data-t="run">How to run</button></div>
+    <pre id="code-out"></pre>
+  </div>
+</section>
+
+<section id="demos" class="wrap">
+  <h2>Ten runnable programs</h2>
+  <p class="sub">Pure compute, no accounts. Pick a program and a preset, edit the input words if you like, and press Run. <span class="tag ref">Live: reference interpreter</span> runs in your browser in JavaScript. <span class="tag weights">Precomputed: weights machine</span> shows the recorded run of the PyTorch weights for the same preset, so you can compare them.</p>
+  <div class="demo-tabs" id="demo-tabs"></div>
+  <div class="demo card">
+    <div class="demo-left">
+      <h3 id="d-title"></h3><p id="d-blurb" class="muted"></p>
+      <textarea id="d-asm" spellcheck="false"></textarea>
+    </div>
+    <div class="demo-right">
+      <div class="presets" id="d-presets"></div>
+      <label class="lbl">Input words at r1+0, r1+8, ... (u64, comma separated) <span id="d-votes-hint" class="muted"></span></label>
+      <input id="d-words" spellcheck="false">
+      <div class="row"><label class="lbl">CU limit <input id="d-lim" type="number" value="10000" min="1" max="100000"></label><button id="d-run" class="primary big">Run</button></div>
+      <div class="out" id="d-out"></div>
+    </div>
+  </div>
+  <div class="card trace-card"><div class="trace-head"><h4>Step trace</h4><span class="muted" id="d-trace-meta"></span></div><div class="trace" id="d-trace"></div></div>
+
+  <h3 class="mt">Paste your own program</h3>
+  <p class="sub">Up to 256 instructions and 8 KB of source. The same reduced sBPF subset: 64-bit ALU (imm and reg), ldx/stx/st b/h/w/dw, jumps, lddw, call (stub), exit. Memory is two 128-byte windows: input at r1, stack below r10. This box runs on the <span class="tag ref">reference interpreter</span> only; the weights machine runs offline in Python.</p>
+  <div class="demo card">
+    <div class="demo-left"><textarea id="p-asm" spellcheck="false" maxlength="8192"># sum 1..10 into r0
+mov64 r0, 0
+mov64 r2, 10
+loop:
+add64 r0, r2
+sub64 r2, 1
+jne r2, 0, loop
+exit</textarea><div class="muted small" id="p-size"></div></div>
+    <div class="demo-right">
+      <label class="lbl">Input words (u64, comma separated)</label><input id="p-words" value="0" spellcheck="false">
+      <div class="row"><label class="lbl">CU limit <input id="p-lim" type="number" value="1000" min="1" max="100000"></label><button id="p-run" class="primary big">Run</button></div>
+      <div class="out" id="p-out"></div><div class="trace small" id="p-trace"></div>
+    </div>
+  </div>
+</section>
+
+<section id="judge" class="wrap">
+  <h2>Judgement filter</h2>
+  <blockquote class="motive">Exploits often happen because code did exactly what it was written to do, with an outcome a sensible human operator would have stopped. That gap motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).</blockquote>
+  <div class="jflow">
+    <div class="jbox"><b>1. sBPF program</b><span>runs in the VM: exact result and CU count</span><em class="tag weights">in the weights</em></div>
+    <div class="arrow"></div>
+    <div class="jbox"><b>2. Review step</b><span>amount, destination, history pattern</span><em class="tag rule">rules, NOT in the weights</em></div>
+    <div class="arrow"></div>
+    <div class="jbox verdicts"><b>3. Verdict</b><span><i class="v allow">allow</i> <i class="v hold">hold</i> <i class="v block">block</i> with a reason</span><em class="tag llm">optional LLM judge (stub)</em></div>
+  </div>
+  <p class="sub">The VM answers "is this valid by the code?". The review step answers "would a sensible operator let this through?". Today the review step is transparent rule-based heuristics in Python (<code>svllm/judge.py</code>) and JavaScript on this page. <code>LLMJudge</code> is a pluggable interface with a stub backend: it can escalate a verdict but never downgrade a rule block, and it never overrides a code-level rejection.</p>
+  <div class="rules card"><b>Rules, in order:</b>
+    <ol><li>Program error or nonzero exit code: <i class="v block">block</i> (the code already said no).</li>
+    <li>More than 3 withdrawals in 15 minutes moving at least 50% of the balance: <i class="v block">block</i> (drain pattern).</li>
+    <li>At least 50x the median past amount to a never-seen destination: <i class="v block">block</i>.</li>
+    <li>At least 10x the median past amount: <i class="v hold">hold</i>.</li>
+    <li>New destination and at least 3x the median: <i class="v hold">hold</i>.</li>
+    <li>Otherwise <i class="v allow">allow</i>.</li></ol></div>
+  <div class="jgrid" id="jgrid"></div>
+</section>
+
+<section id="results" class="wrap">
+  <h2>Test results</h2>
+  <p class="sub">From <code>python run_tests.py</code>. Three independent executions are compared: the Python reference interpreter, Anza's <a href="https://github.com/anza-xyz/sbpf">solana-sbpf</a> 0.12 interpreter (Rust, SBPFVersion V0) and the weights machine. Status, r0, CU and the 128-byte input window are compared against solana-sbpf; the weights machine must also match every register and both memory windows.</p>
+  <div class="card"><table class="res" id="res-table"></table><p class="muted small" id="res-foot"></p></div>
+</section>
+
+<section id="run" class="wrap">
+  <h2>Run it yourself</h2>
+  <pre class="cmd">git clone https://github.com/Verafyai/svmLLM && cd svmLLM
+python -m venv .venv && . .venv/bin/activate
+pip install torch numpy
+python -m svllm.demo fibonacci 10        # one demo on the weights machine, with its trace
+python -m svllm.judge                    # judgement-filter examples
+(cd xcheck && cargo build --release)     # optional: solana-sbpf cross-check
+python run_tests.py                      # full suite, writes results/</pre>
+  <div class="two">
+    <div class="card"><h4>What is in the weights</h4><ul>
+      <li>Instruction fetch: one-hot PC query against DeltaNet program memory.</li>
+      <li>Decode: one constant linear layer from the opcode one-hot to control signals.</li>
+      <li>ALU, branch conditions, address checks, CU meter: exact lookup-table FFNs, linear maps and ReLU gating.</li>
+      <li>Registers and data memory: Gated DeltaNet state with gate 1 and beta 0 or 1.</li></ul></div>
+    <div class="card"><h4>What is not</h4><ul>
+      <li>The driver loop: Python calls <code>step()</code> until the halt flag is set.</li>
+      <li>Fixed-depth ripple circuits are Python loops over unrolled blocks, not one fused layer stack.</li>
+      <li>Lazy mode skips ALU branches whose gate is exactly 0 (full mode computes all and is tested equal).</li>
+      <li>The judgement filter: rules in Python and JS, plus an LLM stub.</li>
+      <li>It is not yet inside Qwen weights; see next steps in the README.</li></ul></div>
+  </div>
+  <div class="two">
+    <div class="card"><h4>Honest limitations</h4><ul>
+      <li>Reduced sBPF: no ALU32, no syscalls (call is a stub that zeroes r0), no accounts, no CPI, no internal calls.</li>
+      <li>Memory is two 128-byte windows, not Solana's full regions. Programs are at most 256 slots.</li>
+      <li>CU model is 1 per instruction. Real Solana charges syscalls and CPI differently.</li>
+      <li>CPU PyTorch, about 10 to 200 ms per instruction. A demo, not a validator.</li></ul></div>
+    <div class="card"><h4>Future possibilities</h4><ul>
+      <li>Accounts: serialize Solana account data into the input window and enforce owner and writable rules.</li>
+      <li>Syscalls: sol_log, memcpy, sha256 as extra FFN circuits.</li>
+      <li>CPI and internal calls: a call stack in DeltaNet memory.</li>
+      <li>A real CU model per instruction class and syscall.</li>
+      <li>Compile the same circuits into Qwenputer-style Qwen layers so a chat model can run sBPF in context.</li></ul></div>
+  </div>
+</section>
+
+<section class="wrap credits">
+  <h2>Credits</h2>
+  <p>Inspired by <a href="https://divagr.com/blog/qwenputer">Qwenputer</a> by divagr1925: a RISC-V CPU compiled into Qwen3.5-4B, with Gated DeltaNet layers as exact RAM. See the <a href="https://x.com/divagr1925/status/2115394340357116169">announcement</a> and the <a href="https://huggingface.co/divagr1925/Qwen3.5-4B-Qwenputer">weights on Hugging Face</a>. Cross-checked with Anza's <a href="https://github.com/anza-xyz/sbpf">solana-sbpf</a>. Sibling project: EVM in an LLM.</p>
+</section>
+</main>
+<footer><img src="assets/svmllm-mark-transparent.png" alt="" width="22"> SVMLLM, MIT licensed. <a href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a></footer>
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -77,6 +77,13 @@ def main():
                         'steps': [{'pc': s['pc'], 'cu': s['cu'], 'insn': disasm_one(p, s['pc']),
                                    'regs': [hex(v) for v in s['regs']]} for s in tr]}
     json.dump(traces, open('results/weights_traces.json', 'w'))
+    # judgement-filter examples: VM run on the weights machine, then the rule judge (not weights)
+    from svllm.judge import run_examples
+    jw, jr = run_examples('weights'), run_examples('ref')
+    for a, b in zip(jw, jr):
+        assert a['vm']['status'] == b['vm']['status'] and a['vm']['r0'] == b['vm']['r0'] and a['vm']['cu'] == b['vm']['cu'], a['id']
+    json.dump(jw, open('results/judge_examples.json', 'w'), indent=1)
+    print('judge', [(e['id'], e['verdict']['decision']) for e in jw])
     print('wrote results/')
 
 

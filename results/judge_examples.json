@@ -1,0 +1,390 @@
+[
+ {
+  "id": "big-new-address",
+  "title": "Valid by code, 100x usual, never-seen address",
+  "story": "The vault program checks balance and the daily limit, and this request passes both. It is also 100x what this account usually sends, to an address it has never paid.",
+  "program": "vault",
+  "words": [
+   1000000,
+   0,
+   50000,
+   20500
+  ],
+  "tx": {
+   "amount": 20500,
+   "destination": "addr:9qZ...never-seen",
+   "time": 864000,
+   "balance_before": 1000000
+  },
+  "history": [
+   {
+    "amount": 200,
+    "destination": "addr:alice-savings",
+    "time": 0,
+    "balance_before": 1000000
+   },
+   {
+    "amount": 150,
+    "destination": "addr:landlord",
+    "time": 86400,
+    "balance_before": 999800
+   },
+   {
+    "amount": 250,
+    "destination": "addr:alice-savings",
+    "time": 172800,
+    "balance_before": 999650
+   },
+   {
+    "amount": 180,
+    "destination": "addr:grocer",
+    "time": 259200,
+    "balance_before": 999400
+   },
+   {
+    "amount": 220,
+    "destination": "addr:alice-savings",
+    "time": 345600,
+    "balance_before": 999220
+   },
+   {
+    "amount": 210,
+    "destination": "addr:landlord",
+    "time": 432000,
+    "balance_before": 999000
+   }
+  ],
+  "vm": {
+   "engine": "weights",
+   "status": "ok",
+   "r0": 0,
+   "cu": 13
+  },
+  "verdict": {
+   "decision": "block",
+   "reason": "100x the usual amount to a destination never seen before. Valid by code, but a sensible operator would stop it.",
+   "signals": {
+    "median_past_amount": 205,
+    "ratio_to_median": 100.0,
+    "destination_seen_before": false,
+    "tx_in_window": 1,
+    "window_outflow": 20500,
+    "window_outflow_fraction": 0.021
+   },
+   "source": "rules (heuristics, not in the weights)"
+  }
+ },
+ {
+  "id": "known-address",
+  "title": "Normal transfer to a known address",
+  "story": "A routine transfer of a typical amount to an address this account pays every week.",
+  "program": "transfer",
+  "words": [
+   1000000,
+   5000,
+   210
+  ],
+  "tx": {
+   "amount": 210,
+   "destination": "addr:alice-savings",
+   "time": 864000,
+   "balance_before": 1000000
+  },
+  "history": [
+   {
+    "amount": 200,
+    "destination": "addr:alice-savings",
+    "time": 0,
+    "balance_before": 1000000
+   },
+   {
+    "amount": 150,
+    "destination": "addr:landlord",
+    "time": 86400,
+    "balance_before": 999800
+   },
+   {
+    "amount": 250,
+    "destination": "addr:alice-savings",
+    "time": 172800,
+    "balance_before": 999650
+   },
+   {
+    "amount": 180,
+    "destination": "addr:grocer",
+    "time": 259200,
+    "balance_before": 999400
+   },
+   {
+    "amount": 220,
+    "destination": "addr:alice-savings",
+    "time": 345600,
+    "balance_before": 999220
+   },
+   {
+    "amount": 210,
+    "destination": "addr:landlord",
+    "time": 432000,
+    "balance_before": 999000
+   }
+  ],
+  "vm": {
+   "engine": "weights",
+   "status": "ok",
+   "r0": 0,
+   "cu": 12
+  },
+  "verdict": {
+   "decision": "allow",
+   "reason": "Valid by code and consistent with history.",
+   "signals": {
+    "median_past_amount": 205,
+    "ratio_to_median": 1.02,
+    "destination_seen_before": true,
+    "tx_in_window": 1,
+    "window_outflow": 210,
+    "window_outflow_fraction": 0.0
+   },
+   "source": "rules (heuristics, not in the weights)"
+  }
+ },
+ {
+  "id": "rapid-drain",
+  "title": "Rapid repeated drain",
+  "story": "The fourth 2,400 withdrawal in ten minutes. Each request is under the daily limit on its own, so the code allows it. Together they move most of the balance.",
+  "program": "vault",
+  "words": [
+   2800,
+   7200,
+   20000,
+   2400
+  ],
+  "tx": {
+   "amount": 2400,
+   "destination": "addr:x7f3...unknown",
+   "time": 864000,
+   "balance_before": 2800
+  },
+  "history": [
+   {
+    "amount": 200,
+    "destination": "addr:alice-savings",
+    "time": 0,
+    "balance_before": 1000000
+   },
+   {
+    "amount": 150,
+    "destination": "addr:landlord",
+    "time": 86400,
+    "balance_before": 999800
+   },
+   {
+    "amount": 250,
+    "destination": "addr:alice-savings",
+    "time": 172800,
+    "balance_before": 999650
+   },
+   {
+    "amount": 180,
+    "destination": "addr:grocer",
+    "time": 259200,
+    "balance_before": 999400
+   },
+   {
+    "amount": 220,
+    "destination": "addr:alice-savings",
+    "time": 345600,
+    "balance_before": 999220
+   },
+   {
+    "amount": 210,
+    "destination": "addr:landlord",
+    "time": 432000,
+    "balance_before": 999000
+   },
+   {
+    "amount": 2400,
+    "destination": "addr:x7f3...unknown",
+    "time": 863400,
+    "balance_before": 10000
+   },
+   {
+    "amount": 2400,
+    "destination": "addr:x7f3...unknown",
+    "time": 863580,
+    "balance_before": 7600
+   },
+   {
+    "amount": 2400,
+    "destination": "addr:x7f3...unknown",
+    "time": 863760,
+    "balance_before": 5200
+   }
+  ],
+  "vm": {
+   "engine": "weights",
+   "status": "ok",
+   "r0": 0,
+   "cu": 13
+  },
+  "verdict": {
+   "decision": "block",
+   "reason": "Drain pattern: 4 withdrawals in 15 minutes moving 96% of the balance. Each one passed the code checks.",
+   "signals": {
+    "median_past_amount": 220,
+    "ratio_to_median": 10.91,
+    "destination_seen_before": true,
+    "tx_in_window": 4,
+    "window_outflow": 9600,
+    "window_outflow_fraction": 0.96
+   },
+   "source": "rules (heuristics, not in the weights)"
+  }
+ },
+ {
+  "id": "spend-cap",
+  "title": "Spend cap: over $1B",
+  "story": "A $1.2B transfer against the $1B cap. The program exits with code 1 before the judge sees it; the judge records the code-level block.",
+  "program": "spend-cap",
+  "words": [
+   1200000000
+  ],
+  "tx": {
+   "amount": 1200000000,
+   "destination": "addr:treasury-2",
+   "time": 864000,
+   "balance_before": 5000000000
+  },
+  "history": [
+   {
+    "amount": 200,
+    "destination": "addr:alice-savings",
+    "time": 0,
+    "balance_before": 1000000
+   },
+   {
+    "amount": 150,
+    "destination": "addr:landlord",
+    "time": 86400,
+    "balance_before": 999800
+   },
+   {
+    "amount": 250,
+    "destination": "addr:alice-savings",
+    "time": 172800,
+    "balance_before": 999650
+   },
+   {
+    "amount": 180,
+    "destination": "addr:grocer",
+    "time": 259200,
+    "balance_before": 999400
+   },
+   {
+    "amount": 220,
+    "destination": "addr:alice-savings",
+    "time": 345600,
+    "balance_before": 999220
+   },
+   {
+    "amount": 210,
+    "destination": "addr:landlord",
+    "time": 432000,
+    "balance_before": 999000
+   }
+  ],
+  "vm": {
+   "engine": "weights",
+   "status": "ok",
+   "r0": 1,
+   "cu": 5
+  },
+  "verdict": {
+   "decision": "block",
+   "reason": "The program itself rejected this (exit code 1). The judge never overrides a code-level rejection.",
+   "signals": {
+    "median_past_amount": 205,
+    "ratio_to_median": 5853658.54,
+    "destination_seen_before": false,
+    "tx_in_window": 1,
+    "window_outflow": 1200000000,
+    "window_outflow_fraction": 0.24
+   },
+   "source": "rules (heuristics, not in the weights)"
+  }
+ },
+ {
+  "id": "new-address-moderate",
+  "title": "Moderate amount, new address",
+  "story": "Five times the usual amount to a first-time address. Not alarming enough to block, but worth a confirmation.",
+  "program": "transfer",
+  "words": [
+   1000000,
+   0,
+   1000
+  ],
+  "tx": {
+   "amount": 1000,
+   "destination": "addr:new-merchant",
+   "time": 864000,
+   "balance_before": 1000000
+  },
+  "history": [
+   {
+    "amount": 200,
+    "destination": "addr:alice-savings",
+    "time": 0,
+    "balance_before": 1000000
+   },
+   {
+    "amount": 150,
+    "destination": "addr:landlord",
+    "time": 86400,
+    "balance_before": 999800
+   },
+   {
+    "amount": 250,
+    "destination": "addr:alice-savings",
+    "time": 172800,
+    "balance_before": 999650
+   },
+   {
+    "amount": 180,
+    "destination": "addr:grocer",
+    "time": 259200,
+    "balance_before": 999400
+   },
+   {
+    "amount": 220,
+    "destination": "addr:alice-savings",
+    "time": 345600,
+    "balance_before": 999220
+   },
+   {
+    "amount": 210,
+    "destination": "addr:landlord",
+    "time": 432000,
+    "balance_before": 999000
+   }
+  ],
+  "vm": {
+   "engine": "weights",
+   "status": "ok",
+   "r0": 0,
+   "cu": 12
+  },
+  "verdict": {
+   "decision": "hold",
+   "reason": "New destination and 4.9x the usual amount. Hold for confirmation.",
+   "signals": {
+    "median_past_amount": 205,
+    "ratio_to_median": 4.88,
+    "destination_seen_before": false,
+    "tx_in_window": 1,
+    "window_outflow": 1000,
+    "window_outflow_fraction": 0.001
+   },
+   "source": "rules (heuristics, not in the weights)"
+  }
+ }
+]

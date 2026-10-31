@@ -1,0 +1,43 @@
+{
+ "conformance": {
+  "cases": 135,
+  "ref_vs_solana_sbpf": "134/134",
+  "weights_vs_ref": "135/135",
+  "seconds": 1.9,
+  "statuses": {
+   "DivideByZero": 2,
+   "InvalidInstruction": 1,
+   "ExecutionOverrun": 2,
+   "ok": 124,
+   "AccessViolation": 5,
+   "ExceededMaxInstructions": 1
+  },
+  "total_steps": 1508
+ },
+ "demo": {
+  "cases": 30,
+  "ref_vs_solana_sbpf": "30/30",
+  "weights_vs_ref": "30/30",
+  "seconds": 6.2,
+  "statuses": {
+   "ok": 30
+  },
+  "total_steps": 2764
+ },
+ "random": {
+  "cases": 1000,
+  "ref_vs_solana_sbpf": "1000/1000",
+  "weights_vs_ref": "1000/1000",
+  "seconds": 62.4,
+  "statuses": {
+   "ok": 551,
+   "ExceededMaxInstructions": 159,
+   "DivideByZero": 201,
+   "AccessViolation": 89
+  },
+  "total_steps": 44756
+ },
+ "full_mode_equals_lazy": "32/32",
+ "weights_param_count": 1130672,
+ "failures": []
+}

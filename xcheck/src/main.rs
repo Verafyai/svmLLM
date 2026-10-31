@@ -41,7 +41,8 @@ fn main() {
         let mut heap = AlignedMemory::<{ ebpf::HOST_ALIGN }>::with_capacity(0);
         let regions = vec![
             exe.get_ro_region(),
-            MemoryRegion::new_writable(stack.as_slice_mut(), ebpf::MM_STACK_START),
+            // toy model: only the top 128 bytes of the first frame are mapped (0x200000F80..0x200001000)
+            MemoryRegion::new_writable(&mut stack.as_slice_mut()[0xF80..0x1000], ebpf::MM_STACK_START + 0xF80),
             MemoryRegion::new_writable(heap.as_slice_mut(), ebpf::MM_HEAP_START),
             MemoryRegion::new_writable(&mut mem, ebpf::MM_INPUT_START),
         ];

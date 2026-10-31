@@ -1,8 +1,8 @@
 """Builds brand assets (cropped logo, transparent variants, favicons, OG card) from the source JPG."""
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np, sys
-SRC = sys.argv[1] if len(sys.argv) > 1 else '/workspace/brand/svmllm-logo.jpg'
-SITE = '/workspace/svllm-site'
+SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'svmllm-logo-source.jpg')
+SITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'site')
 im = Image.open(SRC).convert('RGB'); a = np.asarray(im).astype(int)
 nw = a.min(2) < 225
 def crop(box, pad, square=False):
