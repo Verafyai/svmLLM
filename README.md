@@ -3,7 +3,7 @@
 <h1 align="center">SVMLLM</h1>
 <p align="center"><b>A Solana VM compiled into transformer weights.</b><br>
 Reduced sBPF programs run on hand-built attention, FFN and DeltaNet blocks: exact results, exact compute units, zero training.</p>
-<p align="center"><a href="https://svmllm.rexstjohn.com">Live demo: svmllm.rexstjohn.com</a> | <a href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a></p>
+<p align="center"><a href="https://svmllm.rexstjohn.com">Live demo: svmllm.rexstjohn.com</a> | <a href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a> | Sibling project: <a href="https://github.com/Verafyai/evmLLM">EVMLLM</a> (<a href="https://evmllm.rexstjohn.com">evmllm.rexstjohn.com</a>)</p>
 
 ---
 
@@ -15,9 +15,11 @@ On top of the VM sits a **judgement filter**: after the program has run, a separ
 
 ## Why: code that does exactly what it says
 
-Exploits often happen because code did exactly what it was written to do, with an outcome a sensible human operator would have stopped. That gap motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).
+Some of the costliest smart-contract incidents involve code that ran exactly as written, with an outcome a sensible human operator would have stopped. Many others are ordinary bugs or key compromises; this project targets only the first kind. That gap motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).
 
 A transformer that can execute contract bytecode exactly is a step toward a single model that both runs the program deterministically and reasons about whether the result makes sense.
+
+<p align="center"><img src="assets/judgement-check.png" alt="Judgement check: the contract runs in the VM, the exact result says it is valid by the code, and a separate heuristic check outside the weights blocks a withdrawal 100x the usual size to a never-seen address" width="820"></p>
 
 ## How it works
 
@@ -117,7 +119,7 @@ Runnable examples (`python -m svllm.judge`; the VM step is run on the weights ma
 ```bash
 git clone https://github.com/Verafyai/svmLLM && cd svmLLM
 python3 -m venv .venv && . .venv/bin/activate
-pip install torch numpy
+python3 -m pip install -r requirements.txt
 python -m svllm.demo fibonacci 10       # weights machine vs reference, with the trace
 python -m svllm.judge                   # judgement-filter examples
 (cd xcheck && cargo build --release)    # optional: solana-sbpf 0.12 cross-check binary

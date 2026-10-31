@@ -137,7 +137,7 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
 
 <section id="judge" class="wrap">
   <h2>Judgement filter</h2>
-  <blockquote class="motive">Exploits often happen because code did exactly what it was written to do, with an outcome a sensible human operator would have stopped. That gap motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).</blockquote>
+  <blockquote class="motive">Some of the costliest smart-contract incidents involve code that ran exactly as written, with an outcome a sensible human operator would have stopped. Many others are ordinary bugs or key compromises; this project targets only the first kind. That gap motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).</blockquote>
   <div class="jflow">
     <div class="jbox"><b>1. sBPF program</b><span>runs in the VM: exact result and CU count</span><em class="tag weights">in the weights</em></div>
     <div class="arrow"></div>
@@ -166,7 +166,7 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
   <h2>Run it yourself</h2>
   <pre class="cmd">git clone https://github.com/Verafyai/svmLLM && cd svmLLM
 python3 -m venv .venv && . .venv/bin/activate
-pip install torch numpy
+python3 -m pip install -r requirements.txt
 python -m svllm.demo fibonacci 10        # one demo on the weights machine, with its trace
 python -m svllm.judge                    # judgement-filter examples
 (cd xcheck && cargo build --release)     # optional: solana-sbpf cross-check
