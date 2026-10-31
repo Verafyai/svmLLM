@@ -15,7 +15,7 @@ On top of the VM sits a **judgement filter**: after the program has run, a separ
 
 ## Why: code that does exactly what it says
 
-Some of the costliest smart-contract incidents involve code that ran exactly as written, with an outcome a sensible human operator would have stopped. Many others are ordinary bugs or key compromises; this project targets only the first kind. That gap motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).
+Some of the costliest smart-contract incidents involve code that ran exactly as written, with an outcome a sensible human operator would have stopped. Many others are ordinary bugs or key compromises; this project targets only the first kind. That first kind is what motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).
 
 A transformer that can execute contract bytecode exactly is a step toward a single model that both runs the program deterministically and reasons about whether the result makes sense.
 
@@ -164,7 +164,7 @@ This is a demo that exact computation can live in a model's weights. It is not a
 Making the weights machine part of consensus would need:
 
 - **Determinism.** GPU floating point can differ across hardware and software versions. The weights here use exact lookup-table style math with values that stay exactly 0 or 1, but a full Qwen-sized model is a much bigger problem.
-- **Cost and speed.** A tiny program takes tens of thousands of tokens, and every validator would have to repeat it. Each sBPF instruction is one full pass through the circuits, roughly 10 ms on CPU for simple ops and about 200 ms for div and mod.
+- **Cost and speed.** Each sBPF instruction is one full pass through the circuits, and every validator would have to repeat every pass. On one CPU thread that is about 5 ms for a simple instruction and roughly 65 ms for div or mod.
 - **Compute limits.** The model run would need to be metered and bounded by compute units like any other execution.
 
 The judgement filter is illustrative heuristics on synthetic histories, not a security product.
@@ -174,7 +174,7 @@ The judgement filter is illustrative heuristics on synthetic histories, not a se
 - Reduced subset. No ALU32 (SBPF v0 ALU32 sign extension quirks are not modeled), no syscalls (`call` zeroes r0), no accounts, no CPI, no internal function calls, no SBPF v1+ instructions.
 - Memory is two 128-byte windows and programs are at most 256 slots.
 - CU model is 1 per instruction. Real Solana pricing for syscalls and CPI is not modeled.
-- It is slow: CPU PyTorch, roughly 10 ms per simple instruction and about 200 ms for div and mod. A research demo, not a validator.
+- It is slow: CPU PyTorch on one thread, about 5 ms per simple instruction and roughly 65 ms for div or mod (lazy mode; full mode is slower). A research demo, not a validator.
 - The driver loop and the circuit sequencing are Python. The judgement filter is heuristics, not learned and not in the weights.
 - Not yet inside a pretrained LLM.
 
