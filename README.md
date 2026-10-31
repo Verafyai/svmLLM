@@ -184,7 +184,10 @@ The judgement filter is illustrative heuristics on synthetic histories, not a se
 - **Syscalls**: `sol_log`, `sol_memcpy`, hashing, each as additional FFN circuits.
 - **CPI and internal calls**: a call stack of frames in DeltaNet memory.
 - **A real CU model**: per instruction class and per syscall, matching the runtime's cost tables.
-- **One model for judgement and execution (future work, untested)**: merge the hand-weighted sBPF machine into a Qwen-class model, so the same model reviews a transaction in language and executes it exactly. This has not been built or tested. Its size and speed would be dominated by the base model (Qwenputer's checkpoint is 18.8 GB and needs a 24 GB GPU); the SVM machine itself adds about 1.1M parameters.
+
+## Future steps
+
+**Untested, not a claim.** Merge the hand-weighted sBPF machine into a Qwen-class model, so one model does both the language judgement and the exact execution. This has not been built or tested. Its size and speed would be dominated by the base model: Qwenputer's checkpoint is 18.8 GB and needs a 24 GB GPU, while the SVM machine adds about 1.1M parameters.
 
 ## Next steps: run inside the real Qwenputer weights (needs a GPU)
 
