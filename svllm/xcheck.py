@@ -2,7 +2,7 @@
 import subprocess, os
 BIN = os.path.join(os.path.dirname(__file__), '..', 'xcheck', 'target', 'release', 'xcheck')
 
-NORM = {'StackAccessViolation': 'AccessViolation', 'AccessViolation': 'AccessViolation'}
+NORM = {'StackAccessViolation': 'AccessViolation', 'UnsupportedInstruction': 'InvalidInstruction'}
 
 
 def run_many(cases):

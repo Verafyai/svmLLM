@@ -42,6 +42,8 @@ MM_STACK_TOP = 0x200001000
 
 
 def enc(op, dst=0, src=0, off=0, imm=0):
+    imm &= 0xffffffff
+    imm = imm - (1 << 32) if imm >> 31 else imm
     return struct.pack('<BBhi', op, (src << 4) | dst, off, imm)
 
 
