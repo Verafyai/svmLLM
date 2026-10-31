@@ -153,9 +153,9 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
     <div class="arrow"></div>
     <div class="jbox"><b>2. Review step</b><span>amount, destination, history pattern</span><em class="tag rule">rules, NOT in the weights</em></div>
     <div class="arrow"></div>
-    <div class="jbox verdicts"><b>3. Verdict</b><span><i class="v allow">allow</i> <i class="v hold">hold</i> <i class="v block">block</i> with a reason</span><em class="tag llm">optional LLM judge (stub)</em></div>
+    <div class="jbox verdicts"><b>3. Verdict</b><span><i class="v allow">allow</i> <i class="v hold">hold</i> <i class="v block">block</i> with a reason</span><em class="tag llm">simulated LLM judge</em></div>
   </div>
-  <p class="sub">The VM answers "is this valid by the code?". The review step answers "would a sensible operator let this through?". Today the review step is transparent rule-based heuristics in Python (<code>svllm/judge.py</code>) and JavaScript on this page. <code>LLMJudge</code> is a pluggable interface with a stub backend: it can escalate a verdict but never downgrade a rule block, and it never overrides a code-level rejection.</p>
+  <p class="sub">The VM answers "is this valid by the code?". The review step answers "would a sensible operator let this through?". Today the review step is transparent rule-based heuristics in Python (<code>svllm/judge.py</code>) and JavaScript on this page. Those rules are a heuristic outside the weights. <code>LLMJudge</code> can call a real model if you plug one in. The examples on this page use a simulated reply: it can only make the decision stricter, and it never overrides a code-level rejection.</p>
   <div class="rules card"><b>Rules, in order:</b>
     <ol><li>Program error or nonzero exit code: <i class="v block">block</i> (the code already said no).</li>
     <li>More than 3 withdrawals in 15 minutes moving at least 50% of the balance: <i class="v block">block</i> (drain pattern).</li>
@@ -163,6 +163,31 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
     <li>At least 10x the median past amount: <i class="v hold">hold</i>.</li>
     <li>New destination and at least 3x the median: <i class="v hold">hold</i>.</li>
     <li>Otherwise <i class="v allow">allow</i>.</li></ol></div>
+</section>
+
+<section id="judge-prompt" class="wrap">
+  <h2>How the judge prompt works</h2>
+  <p class="sub">The program runs first, exactly. Then that result is wrapped in a prompt, along with what we know about the sender and the receiver and the run rules. A reviewer answers allow, hold or block, with a reason. On this page that answer is simulated. No language model is called.</p>
+  <figure class="figure">
+    <img src="assets/judge-handoff.png" alt="Simulated handoff: a transaction goes to the VM circuits for an exact result, that result is handed over into a prompt, and a simulated LLM judge answers allow, hold or block">
+    <figcaption>The green arrow is where the exact result is handed over. The reviewer box is marked simulated.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li>A transaction arrives.</li>
+    <li>The VM circuits run the program exactly.</li>
+    <li>The result is wrapped into the prompt, with the sender and receiver history and the run rules.</li>
+    <li>The reviewer answers allow, hold or block, with a reason. Here that answer is a canned reply.</li>
+    <li>The decision can only get stricter. It never gets looser than the rule verdict, and it never overrides a rejection that came from the program itself.</li>
+  </ol>
+  <p class="sub">The published VM results come from hand-set weights. The reply under the prompt is simulated. One model that both runs the program and writes the review is future work, and it has not been tested.</p>
+  <div class="card prompt-viewer" id="prompt-viewer">
+    <h3>Prompt viewer</h3>
+    <p class="muted" id="prompt-viewer-status">Press Re-run live on a scenario. The prompt is built from that live run and the scenario history.</p>
+    <pre id="prompt-text" class="prompt-pre">The prompt will appear here after a scenario runs.</pre>
+    <div class="sim-head"><span class="tag llm">Simulated model output</span></div>
+    <pre id="prompt-sim" class="prompt-pre">The simulated JSON reply will appear here.</pre>
+    <p class="muted small" id="prompt-sim-note">SIMULATED model output, no real LLM was called. The rule review is a heuristic outside the weights.</p>
+  </div>
   <div class="jgrid" id="jgrid"></div>
 </section>
 
@@ -191,7 +216,7 @@ python run_tests.py                      # full suite, writes results/</pre>
       <li>The driver loop: Python calls <code>step()</code> until the halt flag is set.</li>
       <li>Fixed-depth ripple circuits are Python loops over unrolled blocks, not one fused layer stack.</li>
       <li>Lazy mode skips ALU branches whose gate is exactly 0 (full mode computes all and is tested equal).</li>
-      <li>The judgement filter: rules in Python and JS, plus an LLM stub.</li>
+      <li>The judgement filter: rules in Python and JS, plus a simulated LLM reply. No language model is called on this page.</li>
       <li>It is not yet inside Qwen weights; see next steps in the README.</li></ul></div>
   </div>
   <div class="two">
@@ -199,7 +224,8 @@ python run_tests.py                      # full suite, writes results/</pre>
       <li>Reduced sBPF: no ALU32, no syscalls (call is a stub that zeroes r0), no accounts, no CPI, no internal calls.</li>
       <li>Memory is two 128-byte windows, not Solana's full regions. Programs are at most 256 slots.</li>
       <li>CU model is 1 per instruction. Real Solana charges syscalls and CPI differently.</li>
-      <li>CPU PyTorch, about 5 ms per simple instruction and roughly 65 ms for div or mod on one thread. A demo, not a validator.</li></ul></div>
+      <li>CPU PyTorch, about 5 ms per simple instruction and roughly 65 ms for div or mod on one thread. A demo, not a validator.</li>
+      <li>The judge reply on this page is simulated. A single model that both runs the program and writes the review has not been tested.</li></ul></div>
     <div class="card"><h4>Future possibilities</h4><ul>
       <li>Accounts: serialize Solana account data into the input window and enforce owner and writable rules.</li>
       <li>Syscalls: sol_log, memcpy, sha256 as extra FFN circuits.</li>
