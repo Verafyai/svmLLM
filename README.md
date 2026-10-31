@@ -116,7 +116,7 @@ Runnable examples (`python -m svllm.judge`; the VM step is run on the weights ma
 
 ```bash
 git clone https://github.com/Verafyai/svmLLM && cd svmLLM
-python -m venv .venv && . .venv/bin/activate
+python3 -m venv .venv && . .venv/bin/activate
 pip install torch numpy
 python -m svllm.demo fibonacci 10       # weights machine vs reference, with the trace
 python -m svllm.judge                   # judgement-filter examples
