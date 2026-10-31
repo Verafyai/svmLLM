@@ -78,8 +78,18 @@
   </div>
   <div class="stepper card">
     <div class="stepper-head">
-      <div><span class="tag weights">Precomputed: weights machine run</span> <select id="ex-prog"></select></div>
-      <div class="ctrl"><button id="ex-back">Back</button><button id="ex-play" class="primary">Play</button><button id="ex-step">Step</button><button id="ex-reset">Reset</button></div>
+      <div class="ex-pick"><span class="tag weights">Precomputed: weights machine run</span> <select id="ex-prog"></select></div>
+      <div class="stepper-actions">
+        <div class="ctrl"><button type="button" id="ex-back">Back</button><button type="button" id="ex-play" class="primary">Play</button><button type="button" id="ex-step">Step</button><button type="button" id="ex-reset">Reset</button></div>
+        <div class="speeds" id="ex-speeds" role="group" aria-label="Playback speed">
+          <span class="spd-label">Speed</span>
+          <button type="button" data-speed="1">1x</button>
+          <button type="button" data-speed="4">4x</button>
+          <button type="button" data-speed="16">16x</button>
+          <button type="button" data-speed="64">64x</button>
+          <button type="button" data-speed="end">Run to end</button>
+        </div>
+      </div>
     </div>
     <div class="stepper-body">
       <pre class="asm" id="ex-asm"></pre>
@@ -159,7 +169,7 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
 <section id="results" class="wrap">
   <h2>Test results</h2>
   <p class="sub">From <code>python run_tests.py</code>. Three independent executions are compared: the Python reference interpreter, Anza's <a href="https://github.com/anza-xyz/sbpf">solana-sbpf</a> 0.12 interpreter (Rust, SBPFVersion V0) and the weights machine. Status, r0, CU and the 128-byte input window are compared against solana-sbpf; the weights machine must also match every register and both memory windows.</p>
-  <div class="card"><table class="res" id="res-table"></table><p class="muted small" id="res-foot"></p></div>
+  <div class="card table-scroll"><table class="res" id="res-table"></table><p class="muted small" id="res-foot"></p></div>
 </section>
 
 <section id="run" class="wrap">
