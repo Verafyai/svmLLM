@@ -1,6 +1,5 @@
 <p align="center"><img src="assets/svmllm-logo.png" alt="SVMLLM" width="360"></p>
 
-<h1 align="center">SVMLLM</h1>
 <p align="center"><b>A Solana VM compiled into transformer weights.</b><br>
 Reduced sBPF programs run on hand-built attention, FFN and DeltaNet blocks: exact results, exact compute units, zero training.</p>
 <p align="center"><a href="https://svmllm.rexstjohn.com">Live demo: svmllm.rexstjohn.com</a> | <a href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a> | Sibling project: <a href="https://github.com/Verafyai/evmLLM">EVMLLM</a> (<a href="https://evmllm.rexstjohn.com">evmllm.rexstjohn.com</a>)</p>
