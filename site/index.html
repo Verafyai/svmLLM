@@ -195,7 +195,8 @@ python run_tests.py                      # full suite, writes results/</pre>
       <li>Syscalls: sol_log, memcpy, sha256 as extra FFN circuits.</li>
       <li>CPI and internal calls: a call stack in DeltaNet memory.</li>
       <li>A real CU model per instruction class and syscall.</li>
-      <li>Compile the same circuits into Qwenputer-style Qwen layers so a chat model can run sBPF in context.</li></ul></div>
+      <li>Compile the same circuits into Qwenputer-style Qwen layers so a chat model can run sBPF in context.</li>
+      <li>Future work, untested: merge the hand-weighted machine into a Qwen-class model so one model does both language judgement and exact execution. Its size would be dominated by the base model (Qwenputer's checkpoint is 18.8 GB and needs a 24 GB GPU); the SVM machine adds about 1.1M parameters.</li></ul></div>
   </div>
 </section>
 
