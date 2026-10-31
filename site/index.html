@@ -20,7 +20,7 @@
 <header class="top">
   <a class="brand" href="#"><img src="assets/svmllm-mark-transparent.png" alt="" width="30" height="30"><span>SVMLLM</span></a>
   <nav>
-    <a href="#how">How it works</a><a href="#demos">Demos</a><a href="#judge">Judgement filter</a><a href="#results">Results</a><a href="#run">Run it</a>
+    <a href="#how">How it works</a><a href="#demos">Demos</a><a href="#judge">Judgement filter</a><a href="#results">Results</a><a href="#run">Run it</a><a href="#where">Where it runs</a>
     <a class="gh" href="https://github.com/Verafyai/svmLLM">GitHub</a>
   </nav>
 </header>
@@ -56,7 +56,7 @@
     <img class="hero-logo" src="assets/svmllm-logo-transparent.png" alt="SVMLLM logo" width="260">
     <h1>A Solana VM compiled into <span class="grad">transformer weights</span></h1>
     <p class="lede">SVMLLM runs reduced sBPF, the bytecode of Solana programs, inside hand-constructed transformer components. Attention-style lookups fetch and decode instructions, ReLU feed-forward blocks are the ALU, and Gated DeltaNet state is exact RAM for registers and memory. Nothing is trained. Every result is checked against a reference interpreter and Anza's solana-sbpf.</p>
-    <div class="cta"><a class="btn primary" href="#demos">Run the demos</a><a class="btn" href="#how">See how it works</a><a class="btn ghost" href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a></div>
+    <div class="cta"><a class="btn primary" href="#demos">Run the demos</a><a class="btn" href="#how">See how it works</a><a class="btn ghost" href="https://github.com/Verafyai/svmLLM">GitHub: Verafyai/svmLLM</a><a class="btn ghost" href="https://divagr.com/blog/qwenputer">Based on Qwenputer</a></div>
     <div class="chips" id="hero-chips"></div>
   </div>
 </section>
@@ -165,7 +165,7 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
 <section id="run" class="wrap">
   <h2>Run it yourself</h2>
   <pre class="cmd">git clone https://github.com/Verafyai/svmLLM && cd svmLLM
-python -m venv .venv && . .venv/bin/activate
+python3 -m venv .venv && . .venv/bin/activate
 pip install torch numpy
 python -m svllm.demo fibonacci 10        # one demo on the weights machine, with its trace
 python -m svllm.judge                    # judgement-filter examples
@@ -199,9 +199,31 @@ python run_tests.py                      # full suite, writes results/</pre>
   </div>
 </section>
 
+<section id="where" class="wrap">
+  <h2>Where this could run</h2>
+  <p class="sub">This is a demo that exact computation can live in a model's weights. It is not a node replacement.</p>
+  <div class="two wgrid">
+    <div class="card"><h4>Realistic today</h4><ul>
+      <li><b>Sidecar next to the chain software.</b> A node operator runs the model beside their own client to review, flag or hold transactions in their own RPC endpoint, mempool view or wallet guard. It affects only that operator, not consensus. This is the realistic path today.</li>
+      <li><b>Off-chain checker and audit.</b> Re-run a transaction on the weights machine, compare it with the reference result and attach the review to an audit trail.</li>
+      <li><b>Judgement layer in front of a wallet or multisig.</b> The exact VM result plus the review step decides allow, hold or block before a signer approves.</li></ul></div>
+    <div class="card"><h4>Research direction: part of consensus</h4><ul>
+      <li><b>Determinism.</b> GPU floating point can differ across hardware and software versions. These weights use exact lookup-table style math, but a full Qwen-sized model is a much bigger problem.</li>
+      <li><b>Cost and speed.</b> A tiny program takes tens of thousands of tokens, and every validator would repeat it. Each sBPF instruction is one full pass through the circuits, roughly 10 ms on CPU for simple ops and about 200 ms for div and mod.</li>
+      <li><b>Compute limits.</b> The model run would need to be metered and bounded by compute units like any other execution.</li></ul></div>
+  </div>
+  <p class="muted small">The judgement filter is illustrative heuristics on synthetic histories, not a security product.</p>
+</section>
+
+<section id="support" class="wrap support">
+  <h2>Support</h2>
+  <p>Drop me some Solana if you want to support me to keep working on this.</p>
+  <div class="addr"><code id="support-addr">86pEFG22pV4hd9wH48TSnATLo8U9bAraM8C58NAmPtuy</code><button type="button" class="copybtn" onclick="navigator.clipboard.writeText(document.getElementById('support-addr').textContent).then(()=>{this.textContent='Copied'})">Copy</button></div>
+</section>
+
 <section class="wrap credits">
   <h2>Credits</h2>
-  <p>Inspired by <a href="https://divagr.com/blog/qwenputer">Qwenputer</a> by divagr1925: a RISC-V CPU compiled into Qwen3.5-4B, with Gated DeltaNet layers as exact RAM. See the <a href="https://x.com/divagr1925/status/2115394340357116169">announcement</a> and the <a href="https://huggingface.co/divagr1925/Qwen3.5-4B-Qwenputer">weights on Hugging Face</a>. Cross-checked with Anza's <a href="https://github.com/anza-xyz/sbpf">solana-sbpf</a>. Sibling project: EVM in an LLM.</p>
+  <p>Inspired by <a href="https://divagr.com/blog/qwenputer">Qwenputer</a> by divagr1925: a RISC-V CPU compiled into Qwen3.5-4B, with Gated DeltaNet layers as exact RAM. See the <a href="https://x.com/divagr1925/status/2115394340357116169">announcement</a> and the <a href="https://huggingface.co/divagr1925/Qwen3.5-4B-Qwenputer">weights on Hugging Face</a>. Cross-checked with Anza's <a href="https://github.com/anza-xyz/sbpf">solana-sbpf</a>. Sibling project: <a href="https://evmllm.rexstjohn.com">EVMLLM</a>, an Ethereum VM executed by transformer weights.</p>
 </section>
 </main>
 <footer><img src="assets/svmllm-mark-transparent.png" alt="" width="22"> SVMLLM, MIT licensed. <a href="https://github.com/Verafyai/svmLLM">github.com/Verafyai/svmLLM</a></footer>

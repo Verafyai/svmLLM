@@ -88,3 +88,10 @@ table.res{width:100%;border-collapse:collapse;font-size:15px}table.res td,table.
 .credits p{color:#cfc9e6}
 footer{padding:30px;text-align:center;color:var(--mut);border-top:1px solid var(--line);display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap}
 @media (max-width:860px){.pipeline,.jflow{flex-direction:column}.arrow{display:none}.stepper-body,.demo,.two{grid-template-columns:1fr}.top nav{display:none}.meter{grid-template-columns:repeat(2,1fr)}}
+
+.wgrid ul li{margin-bottom:8px}
+.addr{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 0}
+.addr code{user-select:all;-webkit-user-select:all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;padding:8px 12px;border-radius:8px;word-break:break-all}
+.copybtn{font-size:13px;padding:7px 14px}
+.addr code{background:#17142a;border:1px solid var(--line);color:var(--txt)}
+.wgrid{margin-top:14px}
