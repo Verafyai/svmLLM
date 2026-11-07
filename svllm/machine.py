@@ -256,10 +256,103 @@ def encode_row(prog, i):
     return v
 
 
+def mem128(addr, sz):
+    """The default memory unit: two 128-byte windows, byte index = the low two limbs.
+    Returns (access in bounds, the 8 one-hot byte keys addr+0 .. addr+7)."""
+    m_in = relu(relu(addr[2:] + PAT_IN - 1.0).sum() - 13.0)
+    m_st = relu(relu(addr[2:] + PAT_ST - 1.0).sum() - 13.0)
+    abyte = L_KRON(addr[0], addr[1])
+    ok_in = (sz * (V_IN @ abyte)).sum()
+    ok_st = (sz * (V_ST @ abyte)).sum()
+    return OR(AND(m_in, ok_in), AND(m_st, ok_st)), [abyte @ SHIFT256[k] for k in range(8)]
+
+
+class WideMem:
+    """A memory unit with two windows of `win` bytes (256 <= win <= 2048, a power of two),
+    for programs whose data does not fit in 128 bytes (the settlement core uses 1024).
+
+    The byte index is the low B = log2(win) + 1 address bits: limbs 0 and 1, plus the low
+    B - 8 bits of limb 2. The window check matches limbs 3..15 and the high bits of limb 2
+    against each window's base. The one-hot index is one ReLU layer over the three limbs
+    (2^B hidden units, no output layer). Bytes addr+1 .. addr+7 reuse the 16-stage adder's
+    LUT on the low three limbs instead of 2^B x 2^B shift permutations, so the memory unit
+    adds only about 2^B x (32 + 2^(B-8)) weights. Its constants are counted in
+    `self.params`, not in the global PARAMS, so the default machine's count is unchanged."""
+
+    def __init__(self, win):
+        assert win in (256, 512, 1024, 2048), 'win must be 256, 512, 1024 or 2048'
+        self.win, self.B = win, win.bit_length()          # B = log2(win) + 1
+        lo = self.B - 8                                   # index bits that live in limb 2
+        self.params = 0
+
+        def c(m):
+            t = torch.as_tensor(m, dtype=F); self.params += t.numel(); return t
+        n = 1 << self.B
+        self.L2LO = c([[1.0 if (v & ((1 << lo) - 1)) == j else 0.0 for j in range(1 << lo)] for v in range(16)])
+        W = torch.zeros(n, 32 + (1 << lo))
+        for x in range(n):
+            W[x, x & 15] = 1; W[x, 16 + ((x >> 4) & 15)] = 1; W[x, 32 + (x >> 8)] = 1
+        self.KRON = c(W)
+        self.bias = -2.0
+        b_in, b_st = MM_INPUT, MM_STACK_TOP - win
+        self.PAT_IN, self.PAT_ST = word(b_in)[3:], word(b_st)[3:]
+        hi = lambda base: c([1.0 if (v >> lo) == (((base >> 8) & 15) >> lo) else 0.0 for v in range(16)])
+        self.HI_IN, self.HI_ST = hi(b_in), hi(b_st)
+        self.V_IN = c([[1.0 if x + s <= win else 0.0 for x in range(n)] for s in SIZE_B])
+        self.V_ST = c([[1.0 if win <= x and x + s <= 2 * win else 0.0 for x in range(n)] for s in SIZE_B])
+        self.ADD_K = [word(k, 3) for k in range(8)]
+
+    def key(self, l0, l1, l2):
+        return relu(self.KRON @ torch.cat([l0, l1, l2 @ self.L2LO]) + self.bias)
+
+    def __call__(self, addr, sz):
+        m_in = relu(relu(addr[3:] + self.PAT_IN - 1.0).sum() + addr[2] @ self.HI_IN - 13.0)
+        m_st = relu(relu(addr[3:] + self.PAT_ST - 1.0).sum() + addr[2] @ self.HI_ST - 13.0)
+        k0 = self.key(addr[0], addr[1], addr[2])
+        ok_in = (sz * (self.V_IN @ k0)).sum()
+        ok_st = (sz * (self.V_ST @ k0)).sum()
+        keys = [k0]
+        for k in range(1, 8):
+            a, _ = add(addr[:3], self.ADD_K[k], onehot(0, 2))
+            keys.append(self.key(a[0], a[1], a[2]))
+        return OR(AND(m_in, ok_in), AND(m_st, ok_st)), keys
+
+
+_WIDE = {}
+
+
+_SUBSET_DECODE = {}
+
+
+def subset_decode(ops):
+    """DECODE with every opcode outside `ops` zeroed, so it decodes as InvalidInstruction."""
+    key = frozenset(ops)
+    if key not in _SUBSET_DECODE:
+        mask = torch.zeros(256, 1)
+        for op in key:
+            mask[op] = 1.0
+        _SUBSET_DECODE[key] = DECODE * mask                 # same table, rows masked; not new weights
+    return _SUBSET_DECODE[key]
+
+
 class Machine:
-    def __init__(self, prog, mem_in=b'', cu_limit=10000, lazy=True):
+    def __init__(self, prog, mem_in=b'', cu_limit=10000, lazy=True, win=128, ops=None):
+        """ops: optional set of opcodes. The machine then decodes only those (anything else
+        is InvalidInstruction) and builds only the ALU and branch circuits they need, in lazy
+        and in full mode. The settlement core runs with ops = the opcodes it uses."""
         assert len(prog) // 8 <= 256, 'program memory is 256 slots'
         self.lazy = lazy
+        self.win = win
+        self.decode = DECODE if ops is None else subset_decode(ops)
+        names = {OPCODES[o][1] for o in (OPCODES if ops is None else ops) if o in OPCODES}
+        self.alu_names = [n for n in ALU_NAMES if n in names]
+        self.need_jset = 'jset' in names
+        if win == 128:
+            self.mem_unit = mem128
+        else:
+            if win not in _WIDE:
+                _WIDE[win] = WideMem(win)
+            self.mem_unit = _WIDE[win]
         self.prog = DeltaNetRAM(256, PDIM)               # firmware load = delta-rule writes
         for i in range(len(prog) // 8):
             self.prog.write(onehot(i, 256), encode_row(prog, i), 1.0)
@@ -267,10 +360,14 @@ class Machine:
         for r in range(16):
             v = MM_INPUT if r == 1 else MM_STACK_TOP if r == 10 else 0
             self.regs.write(onehot(r, 16), word(v).flatten(), 1.0)
-        self.mem = DeltaNetRAM(256, 32)
-        mem = bytes(mem_in) + bytes(256 - len(mem_in))
-        for a in range(256):
-            self.mem.write(onehot(a, 256), word(mem[a], 2).flatten(), 1.0)
+        nb = 2 * win
+        self.mem = DeltaNetRAM(nb, 32)
+        mem = bytes(mem_in) + bytes(nb - len(mem_in))
+        if win == 128:
+            for a in range(nb):
+                self.mem.write(onehot(a, nb), word(mem[a], 2).flatten(), 1.0)
+        else:                                            # same delta-rule writes, batched
+            self.mem.S = torch.stack([word(b, 2).flatten() for b in mem])
         self.pc = word(0, 4)
         self.cu = word(0, 6)
         self.limit = word(cu_limit, 6)
@@ -292,7 +389,7 @@ class Machine:
         key2 = gate(L_KRON(pc1[0], pc1[1]), AND(pc1[2, 0], pc1[3, 0]))
         row2 = self.prog.read(key2)
         present = row[0]
-        c = row[1:257] @ DECODE                         # decode = one linear layer
+        c = row[1:257] @ self.decode                    # decode = one linear layer
         g = lambda n: c[CI[n]]
         dst, src = row[257:273], row[273:289]
         off = row[289:353].view(4, NIB)
@@ -311,7 +408,8 @@ class Machine:
             'neg': lambda: sub(word(0), A)[0], 'mov': lambda: B,
         }
         alu = torch.zeros(16, NIB)
-        for n, f in branches.items():
+        for n in self.alu_names:
+            f = branches[n]
             gn = g('alu_' + n)
             if self.lazy and float(gn) == 0.0:
                 continue                                 # gate is 0: contribution is exactly 0
@@ -323,7 +421,7 @@ class Machine:
         Af = torch.cat([A[:15], (A[15] @ P_FLIP8.T)[None]])
         Bf = torch.cat([B[:15], (B[15] @ P_FLIP8.T)[None]])
         _, slt = sub(Af, Bf)
-        jset = NOT(is_zero(bitwise(L_AND, A, B)))
+        jset = NOT(is_zero(bitwise(L_AND, A, B))) if self.need_jset else torch.tensor(0.0)
         truth = {'ja': torch.tensor(1.0), 'jeq': e, 'jne': NOT(e), 'jgt': AND(NOT(ult), NOT(e)),
                  'jge': NOT(ult), 'jlt': ult, 'jle': OR(ult, e), 'jset': jset,
                  'jsgt': AND(NOT(slt), NOT(e)), 'jsge': NOT(slt), 'jslt': slt, 'jsle': OR(slt, e)}
@@ -336,18 +434,13 @@ class Machine:
         mem_op = g('is_ldx') + g('is_stx') + g('is_st')
         base = mux(g('is_ldx'), RB, A)
         addr, _ = add(base, sext(off), onehot(0, 2))
-        m_in = relu(relu(addr[2:] + PAT_IN - 1.0).sum() - 13.0)
-        m_st = relu(relu(addr[2:] + PAT_ST - 1.0).sum() - 13.0)
-        abyte = L_KRON(addr[0], addr[1])
         sz = torch.stack([g('sz%d' % i) for i in range(4)])
-        ok_in = (sz * (V_IN @ abyte)).sum()
-        ok_st = (sz * (V_ST @ abyte)).sum()
-        mem_ok = OR(AND(m_in, ok_in), AND(m_st, ok_st))
+        mem_ok, bkeys = self.mem_unit(addr, sz)
         memviol = AND(mem_op, NOT(mem_ok))
         live = [sz[i:].sum() for i in [0, 1, 2, 2, 3, 3, 3, 3]]   # byte k used for size > k
         ld = []
         for k in range(8):
-            kk = abyte @ SHIFT256[k]
+            kk = bkeys[k]
             byte = self.mem.read(kk).view(2, NIB)
             ld.append(gate(byte, live[k]) + ZN * NOT(live[k]))
         loaded = torch.cat(ld)
@@ -361,7 +454,7 @@ class Machine:
         sval = mux(g('is_stx'), RB, imm)
         st_on = AND(OR(g('is_stx'), g('is_st')), mem_ok, ok)
         for k in range(8):
-            self.mem.write(abyte @ SHIFT256[k], sval[2 * k:2 * k + 2].flatten(), AND(st_on, live[k]))
+            self.mem.write(bkeys[k], sval[2 * k:2 * k + 2].flatten(), AND(st_on, live[k]))
         lddw_v = torch.cat([row[353:481].view(8, NIB), row2[353:481].view(8, NIB)])
         wval = (gate(alu, g('is_alu')) + gate(loaded, g('is_ldx')) + gate(lddw_v, g('is_lddw'))
                 + gate(word(0), g('is_call')))
@@ -376,14 +469,14 @@ class Machine:
             self.halted, self.status = True, 'ok'
 
 
-def run(prog, mem_in=b'', cu_limit=10000, lazy=True, trace=None, max_steps=100000):
-    m = Machine(prog, mem_in, cu_limit, lazy)
+def run(prog, mem_in=b'', cu_limit=10000, lazy=True, trace=None, max_steps=100000, win=128, ops=None):
+    m = Machine(prog, mem_in, cu_limit, lazy, win, ops)
     steps = 0
     while not m.halted and steps < max_steps:          # the Python driver loop
         pc = unword(m.pc)
         m.step(); steps += 1
         if trace is not None:
             trace.append({'pc': pc, 'cu': unword(m.cu), 'regs': [m.reg(r) for r in range(11)]})
-    mem = bytes(unword(m.mem.read(onehot(a, 256)).view(2, NIB)) for a in range(256))
+    mem = bytes(unword(m.mem.S[a].view(2, NIB)) for a in range(2 * win))
     return {'status': m.status, 'r0': m.reg(0), 'cu': unword(m.cu),
             'regs': [m.reg(r) for r in range(11)], 'mem': mem}
