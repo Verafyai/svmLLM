@@ -1,8 +1,9 @@
 """Plain-Python reference interpreter for the reduced sBPF subset (SBPF v0 semantics).
 
-Memory model (toy): two 128-byte windows, mirroring Solana's layout:
-  input  0x400000000 .. +128   (r1 points here at entry)
-  stack  0x200000F80 .. 0x200001000  (r10 = 0x200001000, the frame top)
+Memory model (toy): two windows of `win` bytes (128 by default), mirroring Solana's layout:
+  input  0x400000000 .. +win   (r1 points here at entry)
+  stack  0x200001000 - win .. 0x200001000  (r10 = 0x200001000, the frame top)
+The settlement core (svllm/settle.py) uses win = 1024.
 Compute units: 1 per executed instruction (lddw counts once). The meter is checked
 before each instruction, like solana-sbpf's interpreter.
 """
@@ -25,18 +26,18 @@ class VMError(Exception):
         super().__init__(kind); self.kind = kind
 
 
-def _addr(a, size):
-    if MM_INPUT <= a and a + size <= MM_INPUT + WIN:
+def _addr(a, size, win=WIN):
+    if MM_INPUT <= a and a + size <= MM_INPUT + win:
         return a - MM_INPUT
-    if MM_STACK_TOP - WIN <= a and a + size <= MM_STACK_TOP:
-        return WIN + (a - (MM_STACK_TOP - WIN))
+    if MM_STACK_TOP - win <= a and a + size <= MM_STACK_TOP:
+        return win + (a - (MM_STACK_TOP - win))
     raise VMError('AccessViolation')
 
 
-def run(prog, mem_in=b'', cu_limit=10000, trace=None):
+def run(prog, mem_in=b'', cu_limit=10000, trace=None, win=WIN):
     """Returns dict(status, r0, cu, regs, mem). status 'ok' or an error kind."""
     n = len(prog) // 8
-    mem = bytearray(2 * WIN)
+    mem = bytearray(2 * win)
     mem[:len(mem_in)] = mem_in
     r = [0] * 11
     r[1], r[10] = MM_INPUT, MM_STACK_TOP
@@ -84,7 +85,7 @@ def run(prog, mem_in=b'', cu_limit=10000, trace=None):
             elif kind in ('ldx', 'stx', 'st'):
                 size = SIZE_BYTES[name]
                 base = r[s] if kind == 'ldx' else r[d]
-                i = _addr((base + off) & M64, size)
+                i = _addr((base + off) & M64, size, win)
                 if kind == 'ldx':
                     r[d] = int.from_bytes(mem[i:i + size], 'little')
                 else:

@@ -1,5 +1,6 @@
 // Cross-check harness: runs programs on Anza's solana-sbpf interpreter (SBPF V0).
-// stdin: one line per case: "<prog_hex> <mem_hex> <cu_limit>"
+// stdin: one line per case: "<prog_hex> <mem_hex> <cu_limit> [window]"
+// window (default 128): bytes mapped at the input start and at the top of the first stack frame
 // stdout: "ok <r0> <count> <r0..r10 hex,comma> <mem_hex>" or "err <kind> <count>"
 use solana_sbpf::{
     aligned_memory::AlignedMemory, ebpf, elf::Executable,
@@ -31,6 +32,7 @@ fn main() {
         let prog = unhex(parts[0]);
         let mut mem = unhex(parts[1]);
         let limit: u64 = parts[2].parse().unwrap();
+        let win: usize = parts.get(3).map(|w| w.parse().unwrap()).unwrap_or(128);
         let exe = match Executable::<Ctx>::from_text_bytes(&prog, loader.clone(), SBPFVersion::V0, FunctionRegistry::default()) {
             Ok(e) => e, Err(e) => { println!("err load:{:?} 0", e); continue; }
         };
@@ -41,8 +43,8 @@ fn main() {
         let mut heap = AlignedMemory::<{ ebpf::HOST_ALIGN }>::with_capacity(0);
         let regions = vec![
             exe.get_ro_region(),
-            // toy model: only the top 128 bytes of the first frame are mapped (0x200000F80..0x200001000)
-            MemoryRegion::new_writable(&mut stack.as_slice_mut()[0xF80..0x1000], ebpf::MM_STACK_START + 0xF80),
+            // toy model: only the top `win` bytes of the first frame are mapped (default 0x200000F80..0x200001000)
+            MemoryRegion::new_writable(&mut stack.as_slice_mut()[0x1000 - win..0x1000], ebpf::MM_STACK_START + 0x1000 - win as u64),
             MemoryRegion::new_writable(heap.as_slice_mut(), ebpf::MM_HEAP_START),
             MemoryRegion::new_writable(&mut mem, ebpf::MM_INPUT_START),
         ];
