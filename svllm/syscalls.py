@@ -20,7 +20,7 @@ SYS = ['abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove_', 'sol_m
        'sol_set_return_data', 'sol_get_return_data', 'sol_get_stack_height', 'sol_get_clock_sysvar',
        'sol_get_epoch_schedule_sysvar', 'sol_get_rent_sysvar', 'sol_get_epoch_rewards_sysvar', 'sol_get_last_restart_slot',
        'sol_get_sysvar', 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction',
-       'sol_create_program_address', 'sol_try_find_program_address']
+       'sol_create_program_address', 'sol_try_find_program_address', 'sol_invoke_signed_c']
 PDA_MARKER = b'ProgramDerivedAddress'
 MM_INPUT_W = word(4 << 32)
 HEAP_W = word(32 * 1024)
@@ -182,7 +182,7 @@ def program(m, name):
 
     if name == 'sol_get_stack_height':
         x.consume(word(100))
-        return word(1)
+        return word(len(m.ctx['tx'].stack) if m.ctx else 1)
 
     if name in ('sol_memcpy_', 'sol_memmove_', 'sol_memset_', 'sol_memcmp_'):
         x.consume(maxw(word(10), divmod_(R3, word(250))[0]))
@@ -301,6 +301,9 @@ def program(m, name):
             i = add(i, word(0), onehot(1, 2))[0]
             yield
         m.rdlen = R2
+        m.rd_dirty = True
+        if m.ctx:
+            m.PROGRAM_ID = [word(b, 2) for b in m.ctx['frame'].program]
         return word(0)
 
     if name == 'sol_get_return_data':
@@ -452,7 +455,80 @@ def program(m, name):
             x.consume(word(1500))
         return word(1)
 
+    if name == 'sol_invoke_signed_c':
+        from .runtime import _invoke_c, IxError
+        from .sref import VMError
+        tx = m.ctx['tx']
+        export_rd(m)
+        regs_i = [0] + [unword(v) for v in (R1, R2, R3, R4, R5)]
+        cu0 = unword(m.cu)
+        base = tx.cu + cu0
+        try:
+            cu1, _ = _invoke_c(m.ctx, regs_i, CircuitPort(x), cu0, unword(m.limit))
+        except (VMError, IxError) as e:
+            m.cu = word(cu0 + (tx.cu - base), m.cu.shape[0])
+            tx.cu = base - cu0
+            if isinstance(e, IxError):
+                m.ixerr = e.name
+                raise SysFail('Ix')
+            raise SysFail(e.kind)
+        m.cu = word(cu1, m.cu.shape[0])
+        import_rd(m)
+        return word(0)
+
     raise SysFail('Unsupported:' + name)
+
+
+class CircuitPort:
+    """The caller's memory as the CPI translation sees it: every access is the translate circuit
+    (bounds, permissions, alignment on the region offset) and DeltaNet byte reads and writes."""
+    def __init__(self, x):
+        self.x = x
+
+    def read(self, addr, n, align=1, store=False):
+        from .sref import VMError
+        if n == 0:
+            return b''
+        try:
+            p = self.x.xlate(word(addr % 2**64), word(min(n, 2**64 - 1)), store, align=align)
+        except SysFail as f:
+            raise VMError(f.kind)
+        return bytes(unword(self.x.rbyte(self.x.at(p, k))) for k in range(n))
+
+    def write(self, addr, data, align=1):
+        from .sref import VMError
+        if not data:
+            return
+        try:
+            p = self.x.xlate(word(addr % 2**64), word(len(data)), True, align=align)
+        except SysFail as f:
+            raise VMError(f.kind)
+        for k, b in enumerate(data):
+            self.x.wbyte(self.x.at(p, k), word(b, 2))
+
+
+def export_rd(m):
+    """Machine return data -> the transaction (Agave keeps one return-data slot per transaction)."""
+    if m.ctx and m.rd_dirty:
+        tx = m.ctx['tx']
+        n = unword(m.rdlen)
+        tx.rdd['data'] = bytes(unword(_rdbyte(m, k)) for k in range(n))
+        tx.rdd['pid'] = m.ctx['frame'].program
+        m.rd_dirty = False
+
+
+def import_rd(m):
+    if m.ctx:
+        tx = m.ctx['tx']
+        m.rdata, m.rdlen = __import__('svllm.svm', fromlist=['PagedRAM']).PagedRAM(32), word(len(tx.rdd['data']))
+        for k, b in enumerate(tx.rdd['data']):
+            m.rdata.write(word(k, AL), word(b, 2).flatten(), torch.tensor(1.0))
+        m.PROGRAM_ID = [word(b, 2) for b in tx.rdd['pid']]
+
+
+def _rdbyte(m, k):
+    b = m.rdata.read(word(k, AL)).view(2, NIB)
+    return b + ZN * (1.0 - b.sum(-1, keepdim=True))
 
 
 def divmod_n(A, B):

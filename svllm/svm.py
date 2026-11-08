@@ -127,6 +127,7 @@ class Machine:
         self.sys_gen = None
         self.rdata, self.rdlen = PagedRAM(32), word(0)
         self.heap_pos = word(0)                          # the runtime's bump allocator position
+        self.ctx, self.ixerr, self.rd_dirty = None, None, False
         self.PROGRAM_ID = [word(b, 2) for b in (program_id or bytes(32))]
         # syscall microcode state: mode one-hot (log, memcpy, memset), byte counter, length,
         # source and destination physical addresses, fill byte, UTF-8 automaton state
@@ -362,15 +363,20 @@ class Machine:
         return bytes(out)
 
 
-def run_program(img, inp, cu_limit, lazy=True, program_id=None, program_id_b58=''):
+def run_program(img, inp, cu_limit, lazy=True, program_id=None, program_id_b58='', ctx=None):
     """Run a loaded ELF image (solana.image) on a serialized input, in the weights."""
     m = Machine(img['text'], inp, cu_limit, img['config']['gaps'], img['funcs'], lazy, ro=img['ro'],
                 ro_off=img['ro_vaddr'] - MM_PROGRAM, text_off=img['text_vaddr'] - MM_PROGRAM,
                 entry=img['entry'], syscalls=img['syscalls'], program_id=program_id)
+    m.ctx = ctx
+    if ctx:
+        syscalls.import_rd(m)
     steps = 0
     while not m.halted:
         m.step(); steps += 1
-    if float(NOT(is_zero(m.rdlen))):                   # Agave logs return data, success or not
+    if ctx:
+        syscalls.export_rd(m)
+    if float(NOT(is_zero(m.rdlen))) and not ctx:       # Agave logs return data, success or not
         x, n, i = syscalls.Ctx(m), m.rdlen, word(0)
         while not float(eq(i, n)):
             grp = []
@@ -382,8 +388,8 @@ def run_program(img, inp, cu_limit, lazy=True, program_id=None, program_id_b58='
                 i = add(i, word(0), onehot(1, 2))[0]
             x.b64_group(grp)
         x.flush('Program return: ' + program_id_b58 + ' ')
-    return {'status': m.status, 'r0': m.reg(0), 'cu': unword(m.cu), 'logs': m.logs, 'input': m.region_bytes(4),
-            'steps': steps}
+    return {'status': 'SysIx' if m.status == 'SysIx' else m.status, 'r0': m.reg(0), 'cu': unword(m.cu), 'logs': m.logs,
+            'input': m.region_bytes(4), 'steps': steps, 'ixerr': m.ixerr}
 
 
 def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, lazy=True, max_steps=10**7):

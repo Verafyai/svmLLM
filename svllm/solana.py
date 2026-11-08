@@ -21,7 +21,8 @@ SYSCALL_NAMES = ('abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove
                  'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction',
                  'sol_create_program_address', 'sol_try_find_program_address', 'sol_curve_validate_point',
                  'sol_curve_group_op', 'sol_curve_multiscalar_mul', 'sol_curve_decompress', 'sol_curve_pairing_map',
-                 'sol_secp256k1_recover', 'sol_poseidon', 'sol_alt_bn128_group_op', 'sol_alt_bn128_compression')
+                 'sol_secp256k1_recover', 'sol_poseidon', 'sol_alt_bn128_group_op', 'sol_alt_bn128_compression',
+                 'sol_invoke_signed_c', 'sol_invoke_signed_rust')
 # log lines a program produces (the runtime's own invoke / consumed / success lines are not compared)
 PROGRAM_LINES = ('Program log: ', 'Program data: ', 'Program consumption: ', 'Program return: ')
 

@@ -237,6 +237,7 @@ def syscall(name, r, mem, cu, limit, logs, rd):
             if a2 > 1024:
                 raise VMError('ReturnDataTooLarge')
             b, o = sl(a1, a2); rd['data'] = bytes(b[o:o + a2]) if a2 else b''
+            rd['pid'] = rd['ctx']['frame'].program if rd.get('ctx') else PROGRAM_ID
         elif name == 'sol_get_return_data':
             consume(100)
             data = rd['data']; n = min(a2, len(data))
@@ -245,7 +246,7 @@ def syscall(name, r, mem, cu, limit, logs, rd):
                 db, do = sl(a1, n, True); pb, po = typ(a3, 32, 1, True)
                 if db is pb and not (do - po >= 32 if do > po else po - do >= n):
                     raise VMError('CopyOverlapping')        # translate_mut! refuses overlapping borrows
-                db[do:do + n] = data[:n]; pb[po:po + 32] = PROGRAM_ID if data else bytes(32)
+                db[do:do + n] = data[:n]; pb[po:po + 32] = rd.get('pid', PROGRAM_ID)
             return cu, len(data)
         elif name in SYSVAR_CALLS:
             data, align = sysvar_struct(SYSVAR_CALLS[name])
@@ -315,7 +316,7 @@ def syscall(name, r, mem, cu, limit, logs, rd):
         elif name == 'sol_get_processed_sibling_instruction':
             consume(100); return cu, 0                 # one top-level instruction: no siblings
         elif name == 'sol_get_stack_height':
-            consume(100); return cu, 1
+            consume(100); return cu, (len(rd['ctx']['tx'].stack) if rd.get('ctx') else 1)
         elif name == 'sol_remaining_compute_units':
             consume(100); return cu, limit - cu
         return cu, 0
@@ -339,14 +340,16 @@ def utf8_ok(b):
 
 
 def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None, ro=None, ro_off=0, text_off=0,
-        entry=0, syscalls=None):
+        entry=0, syscalls=None, ctx=None):
     """syscalls: {key: name} for abort, sol_log_, sol_memcpy_, sol_memset_ (Agave 4.3.2 rules)."""
-    funcs, syscalls, logs, rd = funcs or {}, syscalls or {}, [], {'data': b'', 'set': False}
+    funcs, syscalls, logs = funcs or {}, syscalls or {}, []
+    rd = ctx['tx'].rdd if ctx else {'data': b'', 'pid': PROGRAM_ID}
+    rd['ctx'] = ctx
     n = len(prog) // 8
     mem = Mem(prog, inp, gaps, ro, ro_off)
     r = [0] * 11
     r[1], r[10] = MM_INPUT, MM_STACK + FRAME
-    frames, pc, cu, status = [], entry, 0, None
+    frames, pc, cu, status, ixerr = [], entry, 0, None, None
     step_fp = FRAME * (2 if gaps else 1)
     try:
         while True:
@@ -420,6 +423,16 @@ def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None, ro=Non
                 hi = dec(prog, pc + 1)[4] if pc + 1 < n else 0
                 r[d] = ((hi & M32) << 32) | (imm & M32)
                 nxt = pc + 2
+            elif kind == 'call' and (imm & M32) in syscalls and syscalls[imm & M32] == 'sol_invoke_signed_c' and ctx:
+                from .runtime import invoke_c, IxError
+                try:
+                    cu, r[0] = invoke_c(ctx, r, mem, cu, cu_limit)
+                except IxError as e:
+                    status, cu, ixerr = 'SysIx', e.cu_local, e.name
+                    break
+                except VMError as e:
+                    cu = e.cu_local
+                    raise SysError(e.kind, cu)
             elif kind == 'call' and (imm & M32) in syscalls:
                 cu, r[0] = syscall(syscalls[imm & M32], r, mem, cu, cu_limit, logs, rd)
             elif kind in ('call', 'callx'):
@@ -451,14 +464,15 @@ def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None, ro=Non
         status, cu = 'Sys' + e.kind, e.cu
     except VMError as e:
         status = e.kind
-    if rd['data']:
+    if rd['data'] and not ctx:
         logs.append('Program return: ' + b58(PROGRAM_ID) + ' ' + base64.b64encode(rd['data']).decode())
     return {'status': status, 'r0': r[0], 'cu': cu, 'regs': list(r), 'logs': logs, 'input': bytes(mem.input),
+            'ixerr': ixerr if status == 'SysIx' else None,
             'hashes': (fnv(mem.stack), fnv(mem.heap), fnv(mem.input))}
 
 
-def run_program(img, inp, cu_limit):
+def run_program(img, inp, cu_limit, ctx=None):
     """Run a loaded ELF image (solana.image) on a serialized input."""
     return run(img['text'], inp, cu_limit, gaps=img['config']['gaps'], funcs=img['funcs'], ro=img['ro'],
                ro_off=img['ro_vaddr'] - MM_PROGRAM, text_off=img['text_vaddr'] - MM_PROGRAM,
-               entry=img['entry'], syscalls=img['syscalls'])
+               entry=img['entry'], syscalls=img['syscalls'], ctx=ctx)
