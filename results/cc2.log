@@ -1,0 +1,19 @@
+poseidon ok 66.42446970939636
+ bn c0 128 0 0s
+ bn 0 0 0 12s
+ bn c1 128 0 23s
+ bn 0 0 0 35s
+ bn 2 128 0 168s
+ bn 4 0 1 169s
+ bn c0 128 0 169s
+ bn 0 128 1 169s
+ bn 2 0 0 277s
+ bn 0 128 1 278s
+bn ok 277.54210591316223
+Traceback (most recent call last):
+  File "/tmp/claude-0/t_cc2.py", line 45, in <module>
+    o, e = Q.bls_syscall(kind, cid, [oh(a) for a in args]), R.bls_syscall(kind, cid, args)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/svmllm/svllm/ccurves.py", line 728, in bls_syscall
+    raise NotImplementedError('BLS12-381 pairing is not in the weights')
+NotImplementedError: BLS12-381 pairing is not in the weights

@@ -1,0 +1,4 @@
+weights vs litesvm 11 / 12 (2375s)
+[('ok', 8), ('InstructionError(0, ProgramFailedToComplete)', 4)]
+1 ('InstructionError(0, ProgramFailedToComplete)', 'InstructionError(0, ProgramFailedToComplete)', False)
+('1d', [29, 30, 29], 57, 185, 'InstructionError(0, ProgramFailedToComplete)', 'InstructionError(0, ProgramFailedToComplete)', 'iled: Access violation reading 96 bytes at address 0x4000038c4 (in input region)')

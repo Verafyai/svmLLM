@@ -20,6 +20,18 @@ A transformer that can execute contract bytecode exactly is a step toward a sing
 
 <p align="center"><img src="assets/judgement-check.png" alt="Judgement check: the contract runs in the VM, the exact result says it is valid by the code, and a separate heuristic check outside the weights blocks a withdrawal 100x the usual size to a never-seen address" width="820"></p>
 
+## Full SVM: Agave 4.3.2's runtime, checked against LiteSVM
+
+The toy below has grown into most of Solana's program runtime: SBPF v0 with ALU32, the real memory
+map with stack gaps, BPF-to-BPF calls, Agave's loaded ELF image, account serialization, all 38
+syscalls registered on mainnet, cross-program invocation through the C and Rust ABIs, the System
+Program and the rent check. Every piece is compared with LiteSVM 0.18.2 (Agave 4.3.2, mainnet
+feature set) or Anza's interpreter. Measured highlights: 600/600 random VM programs, 150/150 real
+compiled programs and 400/400 syscall runs on the weights; 2,500/2,500 CPI transactions and
+2,000/2,000 curve-syscall runs in the reference. The BN254 and BLS12-381 pairings are verified in
+the reference but are not in the weights. Full results, the rules learned from Agave, and what is
+outside the weights: [docs/FULL_SVM.md](docs/FULL_SVM.md).
+
 ## How it works
 
 One sBPF instruction is one call to `Machine.step()` in [`svllm/machine.py`](svllm/machine.py):
@@ -321,7 +333,7 @@ The judgement filter is illustrative heuristics on synthetic histories, not a se
 
 ## Honest limitations
 
-- Reduced subset. No ALU32 (SBPF v0 ALU32 sign extension quirks are not modeled), no syscalls (`call` zeroes r0), no accounts, no CPI, no internal function calls, no SBPF v1+ instructions.
+- The sections below describe the original reduced machine. The full-SVM work and its limits (pairings not in the weights, no nonce accounts, no other builtins, one instruction per transaction, SBPF v0 only) are in [docs/FULL_SVM.md](docs/FULL_SVM.md).
 - Memory is two 128-byte windows and programs are at most 256 slots.
 - CU model is 1 per instruction. Real Solana pricing for syscalls and CPI is not modeled.
 - It is slow: CPU PyTorch on one thread, about 5 ms per simple instruction and roughly 65 ms for div or mod (lazy mode; full mode is slower). A research demo, not a validator.

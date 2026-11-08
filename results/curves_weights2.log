@@ -1,0 +1,5 @@
+weights vs litesvm 10 / 12 (713s)
+[('ok', 9), ('InstructionError(0, ProgramFailedToComplete)', 3)]
+2 ('InstructionError(0, ProgramFailedToComplete)', None, False)
+('24', [36, 32], 26033, 26050, 'InstructionError(0, ProgramFailedToComplete)', None, '')
+('23', [35, 29], 36732, 38956, 'InstructionError(0, ProgramFailedToComplete)', None, '')

@@ -110,6 +110,8 @@ def weights_vm(img, inp, limit, ctx):
 if __name__ == '__main__':
     n, seed = int(sys.argv[1]), int(sys.argv[2])
     vm = weights_vm if len(sys.argv) > 3 and sys.argv[3] == 'weights' else ref_vm
+    if vm is weights_vm:
+        import torch; torch.set_num_threads(1)
     rng = random.Random(seed)
     reqs = [gen(rng) for _ in range(n)]
     truth = runtime.truth_tx(reqs)

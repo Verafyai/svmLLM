@@ -5,7 +5,8 @@ replayed by the reference VM (or the weights) and compared with LiteSVM.
 
 Account 0 is 4096 bytes: inputs at [128, 512) and [1024, 4096), syscall results at [512, ...),
 output buffers at [1024 + ...)."""
-import hashlib, random, struct, sys, collections, time
+import hashlib, random, struct, sys, collections, time, os
+NOPAIR = os.environ.get('NOPAIR') == '1'          # weights runs: leave out the two pairings
 from svllm import solana, sref, curves as C
 
 O = solana.OUT_VM
@@ -234,6 +235,8 @@ def gen(rng, families):
         elif fam == 'bn':
             le = 0x80 if rng.random() < 0.5 else 0
             o = rng.choice([0, 0, 2, 2, 4, 6, 3, 3, 1, 5, 7, 'c0', 'c1', 'c2', 'c3', 'c4'])
+            while NOPAIR and o == 3:
+                o = rng.choice([0, 2, 4, 6, 1, 'c0', 'c1', 'c2', 'c3'])
             if isinstance(o, str):
                 cop = int(o[1])
                 g2 = cop in (2, 3)
@@ -287,6 +290,8 @@ def gen(rng, families):
             g2 = rng.random() < 0.5
             cid = (6 if g2 else 5) | be
             kind = rng.choice(['v', 'add', 'sub', 'mul', 'mul', 'dec', 'dec', 'pair', 'pair', 'badop'])
+            while NOPAIR and kind == 'pair':
+                kind = rng.choice(['v', 'add', 'sub', 'mul', 'dec', 'badop'])
             enc = lambda P, g: bls_point(rng, g, be, P)
             if kind == 'v':
                 ops.append(op(28, cid, put(enc(None, g2))))

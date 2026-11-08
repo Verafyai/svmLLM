@@ -1,0 +1,2 @@
+reference vs litesvm 2000 / 2000 (228s)
+[('ok', 1046), ('InstructionError(0, ProgramFailedToComplete)', 858), ('InstructionError(0, ComputationalBudgetExceeded)', 96)]
