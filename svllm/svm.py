@@ -229,22 +229,28 @@ class Machine:
             v = (branches32[n]() if float(w32) else f()) if lazy else mux(w32, branches32[n](), f())
             alu = alu + gate(v, gn)
         div0 = AND(OR(g('alu_div'), g('alu_mod')), mux(w32, is_zero(B[:8]), is_zero(B)))
-        wid = [eq(imm, word(16)), eq(imm, word(32)), eq(imm, word(64))]
-        le_v = gate(zx(A[:4]), wid[0]) + gate(zx(A[:8]), wid[1]) + gate(A, wid[2])
-        be_v = gate(byteswap(A, 2), wid[0]) + gate(byteswap(A, 4), wid[1]) + gate(byteswap(A, 8), wid[2])
-        end_v = mux(g('end_be'), be_v, le_v)
-        end_bad = AND(g('is_end'), NOT(wid[0] + wid[1] + wid[2]))
+        if lazy and float(g('is_end')) == 0.0:          # gate is 0: exactly zero contribution
+            end_v, end_bad = word(0), torch.tensor(0.0)
+        else:
+            wid = [eq(imm, word(16)), eq(imm, word(32)), eq(imm, word(64))]
+            le_v = gate(zx(A[:4]), wid[0]) + gate(zx(A[:8]), wid[1]) + gate(A, wid[2])
+            be_v = gate(byteswap(A, 2), wid[0]) + gate(byteswap(A, 4), wid[1]) + gate(byteswap(A, 8), wid[2])
+            end_v = mux(g('end_be'), be_v, le_v)
+            end_bad = AND(g('is_end'), NOT(wid[0] + wid[1] + wid[2]))
         # ---------------- branches
-        e = eq(A, B)
-        _, ult = sub(A, B)
-        Af = torch.cat([A[:15], (A[15] @ P_FLIP8.T)[None]])
-        Bf = torch.cat([B[:15], (B[15] @ P_FLIP8.T)[None]])
-        _, slt = sub(Af, Bf)
-        jset = NOT(is_zero(bitwise(L_AND, A, B)))
-        truth = {'ja': torch.tensor(1.0), 'jeq': e, 'jne': NOT(e), 'jgt': AND(NOT(ult), NOT(e)),
-                 'jge': NOT(ult), 'jlt': ult, 'jle': OR(ult, e), 'jset': jset,
-                 'jsgt': AND(NOT(slt), NOT(e)), 'jsge': NOT(slt), 'jslt': slt, 'jsle': OR(slt, e)}
-        taken = sum(AND(g('j_' + n), t) for n, t in truth.items())
+        if lazy and float(g('is_jmp')) == 0.0:
+            taken = torch.tensor(0.0)
+        else:
+            e = eq(A, B)
+            _, ult = sub(A, B)
+            Af = torch.cat([A[:15], (A[15] @ P_FLIP8.T)[None]])
+            Bf = torch.cat([B[:15], (B[15] @ P_FLIP8.T)[None]])
+            _, slt = sub(Af, Bf)
+            jset = NOT(is_zero(bitwise(L_AND, A, B)))
+            truth = {'ja': torch.tensor(1.0), 'jeq': e, 'jne': NOT(e), 'jgt': AND(NOT(ult), NOT(e)),
+                     'jge': NOT(ult), 'jlt': ult, 'jle': OR(ult, e), 'jset': jset,
+                     'jsgt': AND(NOT(slt), NOT(e)), 'jsge': NOT(slt), 'jslt': slt, 'jsle': OR(slt, e)}
+            taken = sum(AND(g('j_' + n), t) for n, t in truth.items())
         target, _ = add(pc1, limbs(sext(off), PCL), onehot(0, 2))
         pc2, _ = add(self.pc, word(2, PCL), onehot(0, 2))
         seq = mux(g('is_lddw'), pc2, pc1)
