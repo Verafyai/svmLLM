@@ -1,0 +1,366 @@
+{
+ "truth": "LiteSVM 0.18.2 (Agave 4.3.2 runtime, mainnet feature set)",
+ "loader": "Agave 4.3.2 ELF loader (truth/src/bin/elfimage.rs)",
+ "programs_built_with": "cargo-build-sbf 2.1.21, platform-tools v1.43",
+ "cases": 120,
+ "seed": 11,
+ "ref_vs_truth": "103/120",
+ "weights_vs_truth": "103/120",
+ "truth_outcomes": {
+  "InstructionError(0, Custom(6))": 13,
+  "InstructionError(0, Custom(1))": 44,
+  "InstructionError(0, Custom(5))": 15,
+  "ok": 19,
+  "InstructionError(0, ProgramFailedToComplete)": 17,
+  "InstructionError(0, Custom(101))": 4,
+  "InstructionError(0, Custom(100))": 4,
+  "InstructionError(0, Custom(4))": 3,
+  "InstructionError(0, Custom(3))": 1
+ },
+ "cases_with_logs": 0,
+ "per_program": {
+  "bond": {
+   "cases": 17,
+   "weights_match": 16,
+   "ok": 0,
+   "cu": 9146,
+   "steps": 58523,
+   "secs": 173.0
+  },
+  "escrow": {
+   "cases": 12,
+   "weights_match": 12,
+   "ok": 2,
+   "cu": 5990,
+   "steps": 43022,
+   "secs": 146.2
+  },
+  "graded_payout": {
+   "cases": 29,
+   "weights_match": 23,
+   "ok": 14,
+   "cu": 26776,
+   "steps": 113077,
+   "secs": 418.7
+  },
+  "ledger": {
+   "cases": 13,
+   "weights_match": 12,
+   "ok": 1,
+   "cu": 8813,
+   "steps": 48932,
+   "secs": 150.3
+  },
+  "milestone_escrow": {
+   "cases": 22,
+   "weights_match": 19,
+   "ok": 2,
+   "cu": 17269,
+   "steps": 85559,
+   "secs": 316.6
+  },
+  "ranked_split": {
+   "cases": 27,
+   "weights_match": 21,
+   "ok": 0,
+   "cu": 21983,
+   "steps": 126626,
+   "secs": 380.3
+  }
+ },
+ "total_cu": 89977,
+ "total_steps": 475739,
+ "cpu_seconds": 1585.0,
+ "wall_seconds": 794.2,
+ "failures": [
+  {
+   "program": "ranked_split",
+   "data": "006400000000000000020100000001000000040102000388dbf612972c594a2c2f6dde493ef1c4cd27adba8c36e6ebd00b89ff143aba6188dbf612972c594a2c2f6dde493ef1c4cd27adba8c36e6ebd00b89ff143aba6194091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d6ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd088dbf612972c594a2c2f6dde493ef1c4cd27adba8c36e6ebd00b89ff143aba61",
+   "cu_limit": 300,
+   "weights": {
+    "ok": false,
+    "cu": 300,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 300,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "milestone_escrow",
+   "data": "00000240420f00000000006400000000000000d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f582f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec2",
+   "cu_limit": 1,
+   "weights": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "ranked_split",
+   "data": "00000000000000000002640000000100000004020003012f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec2d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f5888dbf612972c594a2c2f6dde493ef1c4cd27adba8c36e6ebd00b89ff143aba6194091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d88dbf612972c594a2c2f6dde493ef1c4cd27adba8c36e6ebd00b89ff143aba610000",
+   "cu_limit": 900,
+   "weights": {
+    "ok": false,
+    "cu": 900,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 900,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "ranked_split",
+   "data": "0040420f00000000000488130000000000000100000064000000040203000188dbf612972c594a2c2f6dde493ef1c4cd27adba8c36e6ebd00b89ff143aba612f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec294091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d6ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd0015f7e6bc5aeaf483724089e9252cc13b50951a6b69412522765cff4d780306e",
+   "cu_limit": 600,
+   "weights": {
+    "ok": false,
+    "cu": 600,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 600,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "graded_payout",
+   "data": "000100000000000000f40100000000000094091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967dd1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f58",
+   "cu_limit": 50,
+   "weights": {
+    "ok": false,
+    "cu": 50,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 50,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "ranked_split",
+   "data": "0064000000000000000164000000040102000394091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d94091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d94091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d6ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd06ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd0",
+   "cu_limit": 900,
+   "weights": {
+    "ok": false,
+    "cu": 900,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 900,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "graded_payout",
+   "data": "00000000000000000040420f00000000002f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec26ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd0",
+   "cu_limit": 1200,
+   "weights": {
+    "ok": false,
+    "cu": 1200,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 1200,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "ledger",
+   "data": "000200000088dbf612972c594a2c2f6dde493ef1c4cd27adba8c36e6ebd00b89ff143aba6100000000000000c0d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f580000000000000040",
+   "cu_limit": 300,
+   "weights": {
+    "ok": false,
+    "cu": 300,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 300,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "bond",
+   "data": "010000000000000000",
+   "cu_limit": 100,
+   "weights": {
+    "ok": false,
+    "cu": 100,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 100,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "graded_payout",
+   "data": "000000000000000000f401000000000000015f7e6bc5aeaf483724089e9252cc13b50951a6b69412522765cff4d780306e2f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec2",
+   "cu_limit": 300,
+   "weights": {
+    "ok": false,
+    "cu": 300,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 300,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "graded_payout",
+   "data": "000100000000000000000000000000000094091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d94091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d",
+   "cu_limit": 1,
+   "weights": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "graded_payout",
+   "data": "0000000000000000000000000000000000015f7e6bc5aeaf483724089e9252cc13b50951a6b69412522765cff4d780306e015f7e6bc5aeaf483724089e9252cc13b50951a6b69412522765cff4d780306e",
+   "cu_limit": 1,
+   "weights": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "milestone_escrow",
+   "data": "000903010000000000000040420f000000000040420f00000000006ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd0015f7e6bc5aeaf483724089e9252cc13b50951a6b69412522765cff4d780306e",
+   "cu_limit": 50,
+   "weights": {
+    "ok": false,
+    "cu": 50,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 50,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "milestone_escrow",
+   "data": "000002640000000000000040420f0000000000d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f5894091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d",
+   "cu_limit": 1,
+   "weights": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 1,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "ranked_split",
+   "data": "0000000000000000000388130000000000000100000004010002036ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd06ab9f1eb8f7d3388f4f9d586f66e99fd54080df2c446f0e58668b09c08a16dd0d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f5894091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d2f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec2",
+   "cu_limit": 600,
+   "weights": {
+    "ok": false,
+    "cu": 600,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 600,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "graded_payout",
+   "data": "0032000000000000000000000000000000d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f58d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f58",
+   "cu_limit": 600,
+   "weights": {
+    "ok": false,
+    "cu": 600,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 600,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  },
+  {
+   "program": "ranked_split",
+   "data": "000000000000000080028813000000000000040302000194091dd64a21ffe94214bc6d17deeb43873a5cf2f0a71b4b5caa9a5c81b6967d015f7e6bc5aeaf483724089e9252cc13b50951a6b69412522765cff4d780306e2f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec22f5052c9fd15b19a18c584d01363568198613f0c34e84409ef7938709a159ec2d1a5ac9a015fac2ef7b341673635512a1511f41fe37d111b267f039eec5d4f58",
+   "cu_limit": 900,
+   "weights": {
+    "ok": false,
+    "cu": 900,
+    "err": "InstructionError(0, ComputationalBudgetExceeded)",
+    "logs": []
+   },
+   "truth": {
+    "ok": false,
+    "cu": 900,
+    "err": "InstructionError(0, ProgramFailedToComplete)",
+    "logs": []
+   }
+  }
+ ]
+}

@@ -1,8 +1,10 @@
-.venv/
-xcheck/target/
-__pycache__/
-*.pyc
+*.env
 *.log
+*.pyc
 .DS_Store
 .env
-*.env
+.venv/
+__pycache__/
+results/*.log
+target/
+xcheck/target/

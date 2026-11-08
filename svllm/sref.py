@@ -24,8 +24,8 @@ def fnv(b):
 
 
 class Mem:
-    def __init__(self, prog, inp, gaps):
-        self.ro, self.gaps = bytes(prog), gaps
+    def __init__(self, prog, inp, gaps, ro=None, ro_off=0):
+        self.ro, self.gaps, self.ro_off = bytes(prog if ro is None else ro), gaps, ro_off
         self.stack, self.heap, self.input = bytearray(FRAME * DEPTH), bytearray(HEAP), bytearray(inp)
 
     def at(self, a, n, store):
@@ -35,6 +35,10 @@ class Mem:
             buf = [None, self.ro, self.stack, self.heap, self.input][reg]
             if reg == 1 and store:
                 raise VMError('AccessViolation')
+            if reg == 1:
+                if off < self.ro_off:
+                    raise VMError('AccessViolation')
+                off -= self.ro_off
             if reg == 2 and self.gaps:
                 if (off >> 12) & 1:
                     raise VMError('AccessViolation')
@@ -42,6 +46,11 @@ class Mem:
             if off + n <= len(buf):
                 return buf, off
         raise VMError('AccessViolation')
+
+    def slice(self, a, n, store):
+        if n == 0:
+            return None, 0
+        return self.at(a, n, store)
 
     def load(self, a, n):
         b, o = self.at(a, n, False)
@@ -52,13 +61,183 @@ class Mem:
         b[o:o + n] = (v & ((1 << (8 * n)) - 1)).to_bytes(n, 'little')
 
 
-def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None):
-    funcs = funcs or {}
+import base64, hashlib
+PROGRAM_ID = hashlib.sha256(b'svmtruth:program').digest()
+B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+
+def b58(b):
+    n, s = int.from_bytes(b, 'big'), ''
+    while n:
+        n, m = divmod(n, 58); s = B58[m] + s
+    return '1' * (len(b) - len(b.lstrip(b'\0'))) + s
+
+
+def keccak256(data):
+    """Keccak-256 (the original padding, as Solana's sol_keccak256)."""
+    RC = [0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000, 0x000000000000808B,
+          0x0000000080000001, 0x8000000080008081, 0x8000000000008009, 0x000000000000008A, 0x0000000000000088,
+          0x0000000080008009, 0x000000008000000A, 0x000000008000808B, 0x800000000000008B, 0x8000000000008089,
+          0x8000000000008003, 0x8000000000008002, 0x8000000000000080, 0x000000000000800A, 0x800000008000000A,
+          0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008]
+    ROT = [[0, 36, 3, 41, 18], [1, 44, 10, 45, 2], [62, 6, 43, 15, 61], [28, 55, 25, 21, 56], [27, 20, 39, 8, 14]]
+    rot = lambda x, n: ((x << n) | (x >> (64 - n))) & M64 if n else x
+    rate = 136
+    m = bytearray(data) + b'\x01'
+    m += bytes((-len(m)) % rate); m[-1] |= 0x80
+    A = [[0] * 5 for _ in range(5)]
+    for blk in range(0, len(m), rate):
+        for i in range(rate // 8):
+            A[i % 5][i // 5] ^= int.from_bytes(m[blk + 8 * i:blk + 8 * i + 8], 'little')
+        for rnd in range(24):
+            C = [A[x][0] ^ A[x][1] ^ A[x][2] ^ A[x][3] ^ A[x][4] for x in range(5)]
+            D = [C[(x - 1) % 5] ^ rot(C[(x + 1) % 5], 1) for x in range(5)]
+            A = [[A[x][y] ^ D[x] for y in range(5)] for x in range(5)]
+            B = [[0] * 5 for _ in range(5)]
+            for x in range(5):
+                for y in range(5):
+                    B[y][(2 * x + 3 * y) % 5] = rot(A[x][y], ROT[x][y])
+            A = [[B[x][y] ^ ((~B[(x + 1) % 5][y]) & B[(x + 2) % 5][y]) for y in range(5)] for x in range(5)]
+            A[0][0] ^= RC[rnd]
+    return b''.join(A[i % 5][i // 5].to_bytes(8, 'little') for i in range(4))
+
+
+def syscall(name, r, mem, cu, limit, logs, rd):
+    """Agave 4.3.2's syscalls (the ones Solana programs import most). Returns (cu, r0)."""
+    a1, a2, a3, a4 = r[1], r[2], r[3], r[4]
+
+    def consume(c):
+        nonlocal cu
+        if c > limit - cu:
+            cu = limit
+            raise SysError('ComputationalBudgetExceeded', cu)
+        cu += c
+
+    def sl(addr, n, store=False):                  # translate_slice::<u8>
+        return (None, 0) if n == 0 else mem.at(addr, n, store)
+
+    def typ(addr, n, align, store=False):          # translate_type (alignment on the host pointer)
+        b, o = mem.at(addr, n, store)
+        if o % align:
+            raise VMError('UnalignedPointer')
+        return b, o
+
+    def vmslices(addr, n):                         # translate_slice::<VmSlice<u8>> then each slice
+        if n == 0:
+            return []
+        if n * 16 >= 2**63:
+            raise VMError('InvalidLength')
+        b, o = mem.at(addr, n * 16, False)
+        if o % 8:
+            raise VMError('UnalignedPointer')
+        return [(int.from_bytes(b[o + 16 * i:o + 16 * i + 8], 'little'), int.from_bytes(b[o + 16 * i + 8:o + 16 * i + 16], 'little')) for i in range(n)]
+
+    def text(addr, n):
+        b, o = sl(addr, n)
+        s = bytes(b[o:o + n]) if b is not None else b''
+        if not utf8_ok(s):
+            raise VMError('InvalidString')
+        return s.decode()
+
+    try:
+        if name == 'abort':
+            raise VMError('Abort')
+        if name == 'sol_panic_':
+            consume(a2); text(a1, a2)
+            raise VMError('Panic')
+        if name == 'sol_log_':
+            consume(max(100, a2)); logs.append('Program log: ' + text(a1, a2))
+        elif name == 'sol_log_64_':
+            consume(100); logs.append('Program log: ' + ', '.join(f'{x:#x}' for x in r[1:6]))
+        elif name == 'sol_log_compute_units_':
+            consume(100); logs.append(f'Program consumption: {limit - cu} units remaining')
+        elif name == 'sol_log_pubkey':
+            consume(100); b, o = mem.at(a1, 32, False); logs.append('Program log: ' + b58(bytes(b[o:o + 32])))
+        elif name == 'sol_log_data':
+            consume(100)
+            vs = vmslices(a1, a2)
+            consume(100 * len(vs)); consume(sum(n for _, n in vs) & M64 if sum(n for _, n in vs) < 2**64 else M64)
+            fields = []
+            for p, n in vs:
+                b, o = sl(p, n); fields.append(bytes(b[o:o + n]) if b is not None else b'')
+            logs.append('Program data: ' + ' '.join(base64.b64encode(f).decode() for f in fields))
+        elif name in ('sol_memcpy_', 'sol_memmove_', 'sol_memset_', 'sol_memcmp_'):
+            consume(max(10, a3 // 250))
+            if name == 'sol_memcpy_' and not (a2 - a1 >= a3 if a2 > a1 else a1 - a2 >= a3):
+                raise VMError('CopyOverlapping')
+            if name == 'sol_memset_':
+                db, do = sl(a1, a3, True)
+                if a3: db[do:do + a3] = bytes([a2 & 0xff]) * a3
+            elif name == 'sol_memcmp_':
+                b1, o1 = sl(a1, a3); b2, o2 = sl(a2, a3)
+                s1 = bytes(b1[o1:o1 + a3]) if a3 else b''; s2 = bytes(b2[o2:o2 + a3]) if a3 else b''
+                res = next((x - y for x, y in zip(s1, s2) if x != y), 0)
+                rb, ro = typ(a4, 4, 4, True)
+                rb[ro:ro + 4] = (res & M32).to_bytes(4, 'little')
+            else:
+                db, do = sl(a1, a3, True); sb, so = sl(a2, a3)
+                if a3: db[do:do + a3] = bytes(sb[so:so + a3])
+        elif name in ('sol_sha256', 'sol_keccak256'):
+            if a2 > 20000:
+                raise VMError('TooManySlices')
+            consume(85)
+            mem.at(a3, 32, True)
+            hsh = hashlib.sha256() if name == 'sol_sha256' else None
+            buf = b''
+            for p, n in vmslices(a1, a2):
+                b, o = sl(p, n); chunk = bytes(b[o:o + n]) if b is not None else b''
+                consume(max(10, n // 2))
+                buf += chunk
+            out = hashlib.sha256(buf).digest() if name == 'sol_sha256' else keccak256(buf)
+            b, o = mem.at(a3, 32, True); b[o:o + 32] = out
+        elif name == 'sol_set_return_data':
+            consume(a2 // 250 + 100)
+            if a2 > 1024:
+                raise VMError('ReturnDataTooLarge')
+            b, o = sl(a1, a2); rd['data'] = bytes(b[o:o + a2]) if a2 else b''
+        elif name == 'sol_get_return_data':
+            consume(100)
+            data = rd['data']; n = min(a2, len(data))
+            if n:
+                consume((n + 32) // 250)
+                db, do = sl(a1, n, True); pb, po = typ(a3, 32, 1, True)
+                if db is pb and not (do - po >= 32 if do > po else po - do >= n):
+                    raise VMError('CopyOverlapping')        # translate_mut! refuses overlapping borrows
+                db[do:do + n] = data[:n]; pb[po:po + 32] = PROGRAM_ID if data else bytes(32)
+            return cu, len(data)
+        elif name == 'sol_get_stack_height':
+            consume(100); return cu, 1
+        elif name == 'sol_remaining_compute_units':
+            consume(100); return cu, limit - cu
+        return cu, 0
+    except SysError:
+        raise
+    except VMError as e:
+        raise SysError(e.kind, cu)
+
+
+class SysError(VMError):
+    def __init__(self, kind, cu):
+        super().__init__(kind); self.cu = cu
+
+
+def utf8_ok(b):
+    try:
+        bytes(b).decode('utf-8')
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None, ro=None, ro_off=0, text_off=0,
+        entry=0, syscalls=None):
+    """syscalls: {key: name} for abort, sol_log_, sol_memcpy_, sol_memset_ (Agave 4.3.2 rules)."""
+    funcs, syscalls, logs, rd = funcs or {}, syscalls or {}, [], {'data': b'', 'set': False}
     n = len(prog) // 8
-    mem = Mem(prog, inp, gaps)
+    mem = Mem(prog, inp, gaps, ro, ro_off)
     r = [0] * 11
     r[1], r[10] = MM_INPUT, MM_STACK + FRAME
-    frames, pc, cu, status = [], 0, 0, None
+    frames, pc, cu, status = [], entry, 0, None
     step_fp = FRAME * (2 if gaps else 1)
     try:
         while True:
@@ -132,6 +311,8 @@ def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None):
                 hi = dec(prog, pc + 1)[4] if pc + 1 < n else 0
                 r[d] = ((hi & M32) << 32) | (imm & M32)
                 nxt = pc + 2
+            elif kind == 'call' and (imm & M32) in syscalls:
+                cu, r[0] = syscall(syscalls[imm & M32], r, mem, cu, cu_limit, logs, rd)
             elif kind in ('call', 'callx'):
                 if kind == 'call':
                     if (imm & M32) not in funcs:
@@ -142,7 +323,7 @@ def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None):
                     raise VMError('CallDepthExceeded')
                 r[10] = (r[10] + step_fp) & M64
                 if kind == 'callx':
-                    target = ((r[imm] if 0 <= imm <= 10 else 0) - MM_PROGRAM) & M64
+                    target = ((r[imm] if 0 <= imm <= 10 else 0) - MM_PROGRAM - text_off) & M64
                     target //= 8
                 if target >= n:
                     raise VMError('CallOutsideTextSegment')
@@ -157,7 +338,18 @@ def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None):
                     raise VMError('CallOutsideTextSegment')
                 nxt = ret
             pc = nxt
+    except SysError as e:
+        status, cu = 'Sys' + e.kind, e.cu
     except VMError as e:
         status = e.kind
-    return {'status': status, 'r0': r[0], 'cu': cu, 'regs': list(r),
+    if rd['data']:
+        logs.append('Program return: ' + b58(PROGRAM_ID) + ' ' + base64.b64encode(rd['data']).decode())
+    return {'status': status, 'r0': r[0], 'cu': cu, 'regs': list(r), 'logs': logs, 'input': bytes(mem.input),
             'hashes': (fnv(mem.stack), fnv(mem.heap), fnv(mem.input))}
+
+
+def run_program(img, inp, cu_limit):
+    """Run a loaded ELF image (solana.image) on a serialized input."""
+    return run(img['text'], inp, cu_limit, gaps=img['config']['gaps'], funcs=img['funcs'], ro=img['ro'],
+               ro_off=img['ro_vaddr'] - MM_PROGRAM, text_off=img['text_vaddr'] - MM_PROGRAM,
+               entry=img['entry'], syscalls=img['syscalls'])
