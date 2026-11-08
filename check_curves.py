@@ -133,6 +133,75 @@ def bn_pairing_identity(rng, le):
     return bn_enc(P1, False, le) + bn_enc(Q1, True, le) + bn_enc(P2, False, le) + bn_enc(Q2, True, le)
 
 
+from py_ecc import optimized_bls12_381 as PL
+
+
+def bls_aff(P, g2):
+    if PL.is_inf(P):
+        return None
+    x, y = PL.normalize(P)
+    return ((x.coeffs[0] % C.QP, x.coeffs[1] % C.QP), (y.coeffs[0] % C.QP, y.coeffs[1] % C.QP)) if g2 else (int(x) % C.QP, int(y) % C.QP)
+
+
+def bls_enc(P, g2, be):
+    b = C.bls_out(bls_aff(P, g2), g2)
+    return b if be else C.bls_from_be(b, g2)
+
+
+def bls_point(rng, g2, be, _):
+    W = C.BLS_G2 if g2 else C.BLS_G1
+    c = rng.random()
+    if c < 0.6:
+        return bls_enc(PL.multiply(PL.G2 if g2 else PL.G1, rng.randrange(1, C.QR)), g2, be)
+    if c < 0.67:
+        b = C.bls_out(None, g2)
+    elif c < 0.8:                                      # on the curve, outside the subgroup
+        while True:
+            x = (rng.randrange(C.QP), rng.randrange(C.QP)) if g2 else rng.randrange(C.QP)
+            y = W.sqrt(W.add(W.mul(W.mul(x, x), x), W.b))
+            if y is not None:
+                b = C.bls_out((x, y), g2); break
+    else:
+        b = bytearray(C.bls_out(bls_aff(PL.multiply(PL.G2 if g2 else PL.G1, rng.randrange(1, 50)), g2), g2))
+        k = rng.random()
+        if k < 0.35:
+            b[rng.randrange(1, len(b))] ^= 1 << rng.randrange(8)
+        elif k < 0.6:
+            b[0] |= rng.choice([0x80, 0x40, 0x20])
+        elif k < 0.75:
+            b = bytearray(len(b)); b[0] = 0x40; b[rng.randrange(1, len(b))] = 1
+        else:
+            b[:48] = (C.QP + 1).to_bytes(48, 'big')
+        b = bytes(b)
+    return b if be else C.bls_from_be(b, g2)
+
+
+def bls_comp(rng, g2, be):
+    W = C.BLS_G2 if g2 else C.BLS_G1
+    n = 96 if g2 else 48
+    c = rng.random()
+    if c < 0.08:
+        b = bytes([0xc0]) + bytes(n - 1)
+    else:
+        if c < 0.7:
+            P = bls_aff(PL.multiply(PL.G2 if g2 else PL.G1, rng.randrange(1, C.QR)), g2)
+        else:
+            while True:
+                x = (rng.randrange(C.QP), rng.randrange(C.QP)) if g2 else rng.randrange(C.QP)
+                y = W.sqrt(W.add(W.mul(W.mul(x, x), x), W.b))
+                if y is not None or rng.random() < 0.3:
+                    P = (x, y if y is not None else W.zero); break
+        x, y = P
+        b = bytearray(C._enc(x, g2))
+        b[0] |= 0x80
+        if W.key(y) > W.key(W.neg(y)):
+            b[0] |= 0x20
+        if rng.random() < 0.1:
+            b[0] ^= rng.choice([0x80, 0x40, 0x20])
+        b = bytes(b)
+    return b if be else C.bls_from_be(b, g2)
+
+
 def gen(rng, families):
     data = bytearray(4096)
     slots = []                                 # 32-byte inputs at [1024, 3072): 64 slots
@@ -147,7 +216,7 @@ def gen(rng, families):
     for _ in range(rng.randint(1, 3)):
         fam = rng.choice(families)
         if fam == 'c25519':
-            cid = rng.choice([0, 0, 1, 1, 2, 4, 9])
+            cid = rng.choice([0, 0, 1, 1, 2, 4, 9, 5, 6, 0x85])
             kind = rng.choice(['v', 'g', 'g', 'msm'])
             pts = [ed_points(rng)[0 if cid != 1 else 1] for _ in range(4)]
             if kind == 'v':
@@ -213,6 +282,32 @@ def gen(rng, families):
             if rng.random() < 0.05:
                 da += 4
             ops.append(op(34, prm, le, da, n, out()))
+        elif fam == 'bls':
+            be = 0x80 if rng.random() < 0.5 else 0
+            g2 = rng.random() < 0.5
+            cid = (6 if g2 else 5) | be
+            kind = rng.choice(['v', 'add', 'sub', 'mul', 'mul', 'dec', 'dec', 'pair', 'pair', 'badop'])
+            enc = lambda P, g: bls_point(rng, g, be, P)
+            if kind == 'v':
+                ops.append(op(28, cid, put(enc(None, g2))))
+            elif kind in ('add', 'sub', 'badop'):
+                g = {'add': 0, 'sub': 1, 'badop': 3}[kind]
+                ops.append(op(29, cid, g, put(enc(None, g2)), put(enc(None, g2)), out()))
+            elif kind == 'mul':
+                k = rng.choice([rng.randrange(C.QR), 0, 1, C.QR, 2**256 - 1])
+                ops.append(op(29, cid, 2, put(k.to_bytes(32, 'big' if be else 'little')), put(enc(None, g2)), out()))
+            elif kind == 'dec':
+                ops.append(op(31, cid if rng.random() < 0.95 else rng.choice([0, 4]), put(bls_comp(rng, g2, be)), out()))
+            else:
+                n = rng.choice([0, 1, 1, 2, 3, 9])
+                g1s = b''.join(bls_point(rng, False, be, None) for _ in range(n))
+                g2s = b''.join(bls_point(rng, True, be, None) for _ in range(n))
+                if n == 2 and rng.random() < 0.5:
+                    a_ = rng.randrange(1, C.QR)
+                    g1s = bls_enc(PL.multiply(PL.G1, a_), False, be) + bls_enc(PL.neg(PL.G1), False, be)
+                    g2s = bls_enc(PL.G2, True, be) + bls_enc(PL.multiply(PL.G2, a_), True, be)
+                pc = (4 | be) if rng.random() < 0.95 else rng.choice([5, 0])
+                ops.append(op(32, pc, n, put(g1s) if g1s else O + 1024, put(g2s) if g2s else O + 1024, O + 3072 + 64 * len(ops) - 2048 if rng.random() < 0.5 else O + 3200))
         elif fam == 'secp':
             h, sig, recid = secp_case(rng)
             ops.append(op(33, put(h) if rng.random() < 0.97 else bad(), recid, put(sig), out()))

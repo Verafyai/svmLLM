@@ -520,3 +520,240 @@ def poseidon_hashv(params, endian, vals):
         xs.append(x)
     h = poseidon_fr(xs)
     return 0, h.to_bytes(32, 'little' if endian else 'big')
+
+
+# ------------------------------------------------------------------ BLS12-381 (blst / blstrs semantics, zcash encoding)
+QP = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab
+QR = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
+
+
+class Wc:
+    """y^2 = x^3 + b over Fp (ints) or Fp2 = Fp[u]/(u^2 + 1) (pairs), modulus p."""
+    def __init__(self, p, b, g2):
+        self.p, self.g2 = p, g2
+        if g2:
+            self.add = lambda a, c: ((a[0] + c[0]) % p, (a[1] + c[1]) % p)
+            self.sub = lambda a, c: ((a[0] - c[0]) % p, (a[1] - c[1]) % p)
+            self.mul = lambda a, c: ((a[0] * c[0] - a[1] * c[1]) % p, (a[0] * c[1] + a[1] * c[0]) % p)
+            self.neg = lambda a: ((-a[0]) % p, (-a[1]) % p)
+            self.zero, self.three = (0, 0), (3, 0)
+            self.key = lambda a: (a[1], a[0])
+        else:
+            self.add = lambda a, c: (a + c) % p
+            self.sub = lambda a, c: (a - c) % p
+            self.mul = lambda a, c: a * c % p
+            self.neg = lambda a: (-a) % p
+            self.zero, self.three = 0, 3
+            self.key = lambda a: a
+        self.b = b
+
+    def inv(self, a):
+        p = self.p
+        if self.g2:
+            n = pow((a[0] * a[0] + a[1] * a[1]) % p, p - 2, p)
+            return (a[0] * n % p, (-a[1]) * n % p)
+        return pow(a, p - 2, p)
+
+    def pw(self, a, e):
+        r = (1, 0) if self.g2 else 1
+        while e:
+            if e & 1:
+                r = self.mul(r, a)
+            a = self.mul(a, a); e >>= 1
+        return r
+
+    def sqrt(self, a):
+        p = self.p
+        if a == self.zero:
+            return self.zero
+        if not self.g2:
+            r = pow(a, (p + 1) // 4, p)
+            return r if r * r % p == a else None
+        a1 = self.pw(a, (p - 3) // 4)
+        alpha = self.mul(self.mul(a1, a1), a)
+        if self.mul(self.pw(alpha, p), alpha) == (p - 1, 0):
+            return None
+        x0 = self.mul(a1, a)
+        x = self.mul((0, 1), x0) if alpha == (p - 1, 0) else self.mul(self.pw(self.add((1, 0), alpha), (p - 1) // 2), x0)
+        return x if self.mul(x, x) == a else None
+
+    def on_curve(self, P):
+        return P is None or self.mul(P[1], P[1]) == self.add(self.mul(self.mul(P[0], P[0]), P[0]), self.b)
+
+    def padd(self, A, B):
+        if A is None: return B
+        if B is None: return A
+        (x1, y1), (x2, y2) = A, B
+        if x1 == x2:
+            if self.add(y1, y2) == self.zero:
+                return None
+            m = self.mul(self.mul(self.three, self.mul(x1, x1)), self.inv(self.add(y1, y1)))
+        else:
+            m = self.mul(self.sub(y2, y1), self.inv(self.sub(x2, x1)))
+        x3 = self.sub(self.sub(self.mul(m, m), x1), x2)
+        return (x3, self.sub(self.mul(m, self.sub(x1, x3)), y1))
+
+    def pmul(self, k, A):
+        r = None
+        for bit in bin(k)[2:] if k else '':
+            r = self.padd(r, r)
+            if bit == '1':
+                r = self.padd(r, A)
+        return r
+
+    def pneg(self, A):
+        return None if A is None else (A[0], self.neg(A[1]))
+
+
+BLS_G1, BLS_G2 = Wc(QP, 4, False), Wc(QP, (4, 4), True)
+
+
+def _fe48(bs):                   # one big-endian Fp element, 48 bytes; None if not reduced
+    v = int.from_bytes(bs, 'big')
+    return v if v < QP else None
+
+
+def _fq(bs, g2):                 # zcash order: Fp2 is c1 || c0
+    if not g2:
+        return _fe48(bs)
+    c1, c0 = _fe48(bs[:48]), _fe48(bs[48:])
+    return None if c1 is None or c0 is None else (c0, c1)
+
+
+def _enc(v, g2):
+    return (v[1].to_bytes(48, 'big') + v[0].to_bytes(48, 'big')) if g2 else v.to_bytes(48, 'big')
+
+
+def bls_uncompressed(bs, g2, subgroup):
+    """blst_p1/p2_deserialize on uncompressed bytes (after the syscall's 0xa0 pre-check), then the
+    optional torsion check. Returns ('ok', point or None for infinity) or ('fail', None)."""
+    W = BLS_G2 if g2 else BLS_G1
+    n = len(bs) // 2
+    if bs[0] & 0xa0:
+        return 'fail', None
+    if bs[0] & 0x40:
+        if bs[0] & 0x3f == 0 and not any(bs[1:]):
+            return 'ok', None
+        return 'fail', None
+    x, y = _fq(bs[:n], g2), _fq(bs[n:], g2)
+    if x is None or y is None or not W.on_curve((x, y)):
+        return 'fail', None
+    P = (x, y)
+    if subgroup and W.pmul(QR, P) is not None:
+        return 'fail', None
+    return 'ok', P
+
+
+def bls_out(P, g2):
+    n = 96 if g2 else 48
+    if P is None:
+        return bytes([0x40]) + bytes(2 * n - 1)
+    return _enc(P[0], g2) + _enc(P[1], g2)
+
+
+def bls_compressed(bs, g2):
+    W = BLS_G2 if g2 else BLS_G1
+    if not bs[0] & 0x80:
+        return 'fail', None
+    if bs[0] & 0x40:
+        if bs[0] & 0x3f == 0 and not any(bs[1:]):
+            return 'ok', None
+        return 'fail', None
+    big = bool(bs[0] & 0x20)
+    raw = bytes([bs[0] & 0x1f]) + bs[1:]
+    x = _fq(raw, g2)
+    if x is None:
+        return 'fail', None
+    y = W.sqrt(W.add(W.mul(W.mul(x, x), x), W.b))
+    if y is None:
+        return 'fail', None
+    lo, hi = sorted([y, W.neg(y)], key=W.key)
+    P = (x, hi if big else lo)
+    if W.pmul(QR, P) is not None:
+        return 'fail', None
+    return 'ok', P
+
+
+def bls_to_be(bs, g2):
+    """The syscall's LE layout to zcash BE: reverse each 48-byte limb, then swap c0/c1 for G2."""
+    b = bytearray(b''.join(bs[i:i + 48][::-1] for i in range(0, len(bs), 48)))
+    if g2:
+        for i in range(0, len(b), 96):
+            b[i:i + 96] = b[i + 48:i + 96] + b[i:i + 48]
+    return bytes(b)
+
+
+bls_from_be = bls_to_be                  # the same permutation both ways
+
+
+def bls_gt(pairs):
+    """Product of pairings, final-exponentiated, serialized as blst's fp12 (Fp2 -> Fp6 -> Fp12
+    tower, each Fp little-endian), 576 bytes."""
+    from py_ecc import optimized_bls12_381 as b
+    acc = b.FQ12.one()
+    for P, Q in pairs:
+        if P is None or Q is None:
+            continue
+        Pp = (b.FQ(P[0]), b.FQ(P[1]), b.FQ(1))
+        Qp = (b.FQ2([Q[0][0], Q[0][1]]), b.FQ2([Q[1][0], Q[1][1]]), b.FQ2.one())
+        acc = acc * b.pairing(Qp, Pp, final_exponentiate=False)
+    f = b.final_exponentiate(acc) if pairs else acc
+    # blst's Miller loop runs over the negative BLS parameter and its final exponentiation uses the
+    # 3 * (p^4 - p^2 + 1) / r hard part, so its value is py_ecc's e(P, Q) to the power -3
+    # (measured against LiteSVM: e(G1, G2) matches only for k = -3 in k in {+-1, +-2, +-3}).
+    f = (f ** 3).inv()
+    c = [int(x) % QP for x in f.coeffs]
+    out = b''
+    for i in range(2):                    # fp6 index: the w power parity
+        for j in range(3):                # fp2 index: v^j = w^(2j)
+            k = 2 * j + i
+            c1 = c[k + 6]
+            c0 = (c[k] + c[k + 6]) % QP
+            out += c0.to_bytes(48, 'little') + c1.to_bytes(48, 'little')
+    return out
+
+
+def bls_syscall(kind, cid, args):
+    """kind in validate/add/sub/mul/decompress/pairing; cid is the curve id (endianness in bit 7).
+    args are raw byte strings; returns (0, output bytes or None) or (1, None)."""
+    le = not cid & 0x80
+    g2 = (cid & 0x7f) == 6
+    be = (lambda x, g: bls_to_be(x, g)) if le else (lambda x, g: x)
+    back = (lambda x, g: bls_from_be(x, g)) if le else (lambda x, g: x)
+    if kind == 'validate':
+        st, _ = bls_uncompressed(be(args[0], g2), g2, True)
+        return (0, None) if st == 'ok' else (1, None)
+    if kind in ('add', 'sub'):
+        W = BLS_G2 if g2 else BLS_G1
+        s1, P = bls_uncompressed(be(args[0], g2), g2, False)
+        s2, Q = bls_uncompressed(be(args[1], g2), g2, False)
+        if s1 != 'ok' or s2 != 'ok':
+            return 1, None
+        R = W.padd(P, Q if kind == 'add' else W.pneg(Q))
+        return 0, back(bls_out(R, g2), g2)
+    if kind == 'mul':
+        W = BLS_G2 if g2 else BLS_G1
+        k = int.from_bytes(args[0], 'little' if le else 'big')
+        st, P = bls_uncompressed(be(args[1], g2), g2, True)
+        if st != 'ok' or k >= QR:
+            return 1, None
+        return 0, back(bls_out(W.pmul(k, P), g2), g2)
+    if kind == 'decompress':
+        st, P = bls_compressed(be(args[0], g2), g2)
+        if st != 'ok':
+            return 1, None
+        return 0, back(bls_out(P, g2), g2)
+    if kind == 'pairing':
+        g1s, g2s = args
+        if len(g1s) > 8:
+            return 1, None
+        pairs = []
+        for a, c in zip(g1s, g2s):
+            s1, P = bls_uncompressed(be(a, False), False, True)
+            s2, Q = bls_uncompressed(be(c, True), True, True)
+            if s1 != 'ok' or s2 != 'ok':
+                return 1, None
+            pairs.append((P, Q))
+        out = bls_gt(pairs)
+        return 0, out if le else out[::-1]
+    raise ValueError(kind)

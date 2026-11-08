@@ -394,6 +394,50 @@ def curve_syscall(name, r, mem, consume, typ, sl, cu):
             return cu(), code
         write(a4, pub)
         return cu(), 0
+    bls = a1 & ~0x80
+    if name == 'sol_curve_validate_point' and bls in (5, 6):
+        n = 96 if bls == 5 else 192
+        consume(1565 if bls == 5 else 1968)
+        b, o = typ(a2, n, 1)
+        return cu(), curves.bls_syscall('validate', a1, [bytes(b[o:o + n])])[0]
+    if name == 'sol_curve_group_op' and bls in (5, 6):
+        if a2 not in (0, 1, 2):
+            raise VMError('InvalidAttribute')
+        n = 96 if bls == 5 else 192
+        consume({(5, 0): 128, (5, 1): 129, (5, 2): 4627, (6, 0): 203, (6, 1): 204, (6, 2): 8255}[(bls, a2)])
+        lb, lo = typ(a3, 32 if a2 == 2 else n, 1)
+        left = bytes(lb[lo:lo + (32 if a2 == 2 else n)])
+        rb, ro = typ(a4, n, 1); right = bytes(rb[ro:ro + n])
+        code, out = curves.bls_syscall({0: 'add', 1: 'sub', 2: 'mul'}[a2], a1, [left, right])
+        if code:
+            return cu(), 1
+        write(a5, out)
+        return cu(), 0
+    if name == 'sol_curve_decompress':
+        if bls not in (5, 6):
+            raise VMError('InvalidAttribute')
+        n = 48 if bls == 5 else 96
+        consume(2100 if bls == 5 else 3050)
+        b, o = typ(a2, n, 1)
+        code, out = curves.bls_syscall('decompress', a1, [bytes(b[o:o + n])])
+        if code:
+            return cu(), 1
+        write(a3, out)
+        return cu(), 0
+    if name == 'sol_curve_pairing_map':
+        if bls != 4:
+            raise VMError('InvalidAttribute')
+        consume(min(25445 + 13023 * max(a2 - 1, 0), 2**64 - 1))
+        if a2 * 96 >= 2**63:
+            raise VMError('InvalidLength')
+        gb, go = sl(a3, 96 * a2); hb, ho = sl(a4, 192 * a2)
+        g1s = [bytes(gb[go + 96 * i:go + 96 * i + 96]) for i in range(a2)]
+        g2s = [bytes(hb[ho + 192 * i:ho + 192 * i + 192]) for i in range(a2)]
+        code, out = curves.bls_syscall('pairing', a1, [g1s, g2s])
+        if code:
+            return cu(), 1
+        write(a5, out)
+        return cu(), 0
     if name == 'sol_curve_validate_point':
         if a1 not in (0, 1):
             raise VMError('InvalidAttribute')
