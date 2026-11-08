@@ -277,6 +277,16 @@ The other three scenarios use the same prompt builder and the same simulated bac
 - Spend cap, exit code 1: `{"decision":"block","reason":"The program itself exited with code 1. A code-level rejection is never overridden. Block it."}`
 - Moderate amount, new address: `{"decision":"hold","reason":"The program allowed the call, but the amount is about 4.9x the usual size and the destination has never been seen before. Hold it for a person to confirm."}`
 
+## Settlement core (research, for Verafy Harness)
+
+[SETTLEMENT.md](SETTLEMENT.md): Verafy Harness's five integer exit programs (graded payout, ranked split, milestone escrow, bond, ledger), written in this subset and run on the weights as an optional third runtime next to runtime.js and TinySVM. They agree on all 1,547 suite calls and on 1,500 cross-runtime calls (measured Nov 6, 2026). The jury pay rule (IEEE-754 doubles) is not covered. Only the mock prover has run, so the success criterion, a settlement proof cheaper than the judgment proof, is untested: it stays a demo.
+
+```bash
+python run_settlement.py                          # settlement suites, size and latency; writes results/settlement.json
+python -m svllm.subset <deploy dir> 300           # H1: trace the compiled TinySVM programs on solana-sbpf
+python -m unittest tests/test_settlement.py
+```
+
 ## Quickstart
 
 ```bash

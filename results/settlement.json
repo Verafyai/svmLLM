@@ -1,0 +1,227 @@
+{
+ "date": "2026-11-06",
+ "machine": "Apple M4, 16 GB, Darwin 25.6.0",
+ "torch": "2.15.0",
+ "python": "3.13.5",
+ "window_bytes": 1024,
+ "programs": {
+  "graded_payout": {
+   "instructions": 46
+  },
+  "ranked_split": {
+   "instructions": 82
+  },
+  "milestone_escrow": {
+   "instructions": 36
+  },
+  "bond": {
+   "instructions": 54
+  },
+  "ledger": {
+   "instructions": 70
+  }
+ },
+ "suite": {
+  "calls": 1547,
+  "named": 47,
+  "random_per_program": 300,
+  "unsupported_named": [],
+  "ref_vs_oracle": "1547/1547",
+  "solana_sbpf_vs_ref": "1547/1547",
+  "weights_vs_ref": "1547/1547",
+  "weights_vs_oracle": "1547/1547",
+  "full_mode_equals_lazy": "20/20",
+  "seconds": 244.9,
+  "per_program": {
+   "graded_payout": {
+    "calls": 309,
+    "ok": 303,
+    "refused": 6,
+    "cu_min": 4,
+    "cu_mean": 40.0,
+    "cu_max": 41
+   },
+   "ranked_split": {
+    "calls": 312,
+    "ok": 303,
+    "refused": 9,
+    "cu_min": 4,
+    "cu_mean": 174.9,
+    "cu_max": 624
+   },
+   "milestone_escrow": {
+    "calls": 308,
+    "ok": 207,
+    "refused": 101,
+    "cu_min": 4,
+    "cu_mean": 22.4,
+    "cu_max": 27
+   },
+   "bond": {
+    "calls": 309,
+    "ok": 197,
+    "refused": 112,
+    "cu_min": 11,
+    "cu_mean": 22.8,
+    "cu_max": 29
+   },
+   "ledger": {
+    "calls": 309,
+    "ok": 38,
+    "refused": 271,
+    "cu_min": 5,
+    "cu_mean": 100.4,
+    "cu_max": 334
+   }
+  },
+  "failures": []
+ },
+ "size": {
+  "tables": [
+   {
+    "table": "L_ADD 16-stage adder cell",
+    "params": 27136,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_AND",
+    "params": 12544,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_OR",
+    "params": 12544,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_XOR",
+    "params": 12544,
+    "in_settlement_machine": false
+   },
+   {
+    "table": "L_MULN nibble multiplier",
+    "params": 331776,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_SHL1 (division)",
+    "params": 1184,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_BSL (lsh)",
+    "params": 54272,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_BSR (rsh, arsh)",
+    "params": 54272,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_SHAMT (shift amount)",
+    "params": 13568,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "L_KRON (fetch key)",
+    "params": 73984,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "P_NOT (subtract)",
+    "params": 256,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "P_FLIP8 (signed compare)",
+    "params": 256,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "SIGN_IND (sign extension)",
+    "params": 16,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "DECODE",
+    "params": 9984,
+    "in_settlement_machine": true
+   },
+   {
+    "table": "SHIFT256 (128-byte memory: byte k keys)",
+    "params": 524288,
+    "in_settlement_machine": false
+   },
+   {
+    "table": "V_IN, V_ST (128-byte memory: bounds)",
+    "params": 2048,
+    "in_settlement_machine": false
+   },
+   {
+    "table": "WideMem(1024) memory unit",
+    "params": 98464,
+    "in_settlement_machine": true
+   }
+  ],
+  "svmllm_machine_params": 1130672,
+  "settlement_machine_params": 690256,
+  "settlement_machine_bytes_float32": 2761024
+ },
+ "latency": {
+  "label": "measured, 2026-11-06, Apple M4, 16 GB, Darwin 25.6.0, one CPU thread, torch 2.15.0",
+  "repetitions": 20,
+  "per_program": {
+   "graded_payout": {
+    "call": "graded/43pct",
+    "steps": 40,
+    "weights_lazy_ms_median": 179.2,
+    "weights_full_ms_median": 2153.04,
+    "ref_interpreter_ms_median": 0.03,
+    "dense_flops_per_step_lazy": 19028096,
+    "dense_flops_per_step_full": 179578547,
+    "dense_flops_total_full": 7183141888
+   },
+   "ranked_split": {
+    "call": "ranked/three-of-four",
+    "steps": 156,
+    "weights_lazy_ms_median": 645.37,
+    "weights_full_ms_median": 7808.31,
+    "ref_interpreter_ms_median": 0.107,
+    "dense_flops_per_step_lazy": 16386593,
+    "dense_flops_per_step_full": 179420521,
+    "dense_flops_total_full": 27989601280
+   },
+   "milestone_escrow": {
+    "call": "milestone/first",
+    "steps": 27,
+    "weights_lazy_ms_median": 67.26,
+    "weights_full_ms_median": 1070.12,
+    "ref_interpreter_ms_median": 0.022,
+    "dense_flops_per_step_lazy": 8138468,
+    "dense_flops_per_step_full": 179626458,
+    "dense_flops_total_full": 4849914368
+   },
+   "bond": {
+    "call": "bond/slash",
+    "steps": 29,
+    "weights_lazy_ms_median": 80.69,
+    "weights_full_ms_median": 1328.05,
+    "ref_interpreter_ms_median": 0.019,
+    "dense_flops_per_step_lazy": 8165464,
+    "dense_flops_per_step_full": 179756085,
+    "dense_flops_total_full": 5212926464
+   },
+   "ledger": {
+    "call": "ledger/move",
+    "steps": 88,
+    "weights_lazy_ms_median": 188.65,
+    "weights_full_ms_median": 3739.87,
+    "ref_interpreter_ms_median": 0.06,
+    "dense_flops_per_step_lazy": 7993332,
+    "dense_flops_per_step_full": 179488105,
+    "dense_flops_total_full": 15794953216
+   }
+  }
+ }
+}

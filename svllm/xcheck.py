@@ -5,9 +5,11 @@ BIN = os.path.join(os.path.dirname(__file__), '..', 'xcheck', 'target', 'release
 NORM = {'StackAccessViolation': 'AccessViolation', 'UnsupportedInstruction': 'InvalidInstruction'}
 
 
-def run_many(cases):
-    """cases: list of (prog_bytes, mem128_bytes, cu_limit). Returns list of dicts."""
-    inp = ''.join(f"{p.hex()} {(m.hex() or '-')} {lim}\n" for p, m, lim in cases)
+def run_many(cases, win=None):
+    """cases: list of (prog_bytes, mem128_bytes, cu_limit). Returns list of dicts.
+    win: map `win` bytes of input and of stack instead of 128 (mem is then win bytes)."""
+    w = f' {win}' if win else ''
+    inp = ''.join(f"{p.hex()} {(m.hex() or '-')} {lim}{w}\n" for p, m, lim in cases)
     out = subprocess.run([BIN], input=inp, capture_output=True, text=True, check=True).stdout.splitlines()
     res = []
     for line in out:
