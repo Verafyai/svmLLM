@@ -442,6 +442,7 @@ def weights_inventory():
         ('P_NOT (subtract)', m.P_NOT.numel(), True),
         ('P_FLIP8 (signed compare)', m.P_FLIP8.numel(), True),
         ('SIGN_IND (sign extension)', m.SIGN_IND.numel(), True),
+        ('P_AND1 (ALU32 shift amount)', m.P_AND1.numel(), False),
         ('DECODE', m.DECODE.numel(), True),
         ('SHIFT256 (128-byte memory: byte k keys)', sum(t.numel() for t in m.SHIFT256), False),
         ('V_IN, V_ST (128-byte memory: bounds)', m.V_IN.numel() + m.V_ST.numel(), False),
