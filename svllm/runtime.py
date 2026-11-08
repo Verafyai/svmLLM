@@ -203,56 +203,145 @@ class Tx:
 
     # ------------------------------------------------------------ System Program (builtin)
     def builtin(self, frame):
+        """Agave 4.3.2's system_processor: bincode-decode first, then account counts, then the
+        instruction. Nonce-account instructions are not implemented here (they fail loudly)."""
         if frame.program != SYSTEM:
             raise IxError('UnsupportedProgramId')
         self.consume(150)
-        d = frame.data
-        if len(d) < 4:
-            raise IxError('InvalidInstructionData')
-        tag = struct.unpack_from('<I', d)[0]
-        accs = frame.accounts
+        d, accs = frame.data, frame.accounts
+        signers = {k for k, s, _ in accs if s}
+
+        def need(n):
+            if len(accs) < n:
+                raise IxError('MissingAccount')
 
         def acc(i):
-            if i >= len(accs):
-                raise IxError('MissingAccount')
             k, s, w = accs[i]
-            return self.acc[k], s, w
+            return self.acc[k], w
 
-        if tag == 2:                                              # transfer(lamports)
-            if len(d) < 12:
+        def u64(o):
+            if len(d) < o + 8:
                 raise IxError('InvalidInstructionData')
-            n = struct.unpack_from('<Q', d, 4)[0]
-            (fa, fs, fw), (ta, ts, tw) = acc(0), acc(1)
-            if not fs:
+            return struct.unpack_from('<Q', d, o)[0]
+
+        def key_at(o):
+            if len(d) < o + 32:
+                raise IxError('InvalidInstructionData')
+            return d[o:o + 32]
+
+        def seed_at(o):                    # bincode String: u64 length, then UTF-8 bytes
+            n = u64(o)
+            if len(d) < o + 8 + n:
+                raise IxError('InvalidInstructionData')
+            s = d[o + 8:o + 8 + n]
+            try:
+                s.decode('utf-8')
+            except UnicodeDecodeError:
+                raise IxError('InvalidInstructionData')
+            return s, o + 8 + n
+
+        def with_seed(base, seed, owner):
+            if len(seed) > 32:
+                raise IxError('Custom(0)') if False else IxError('MaxSeedLengthExceeded')
+            if owner[-21:] == b'ProgramDerivedAddress':
+                raise IxError('IllegalOwner') if False else IxError('InvalidSeeds')
+            return __import__('hashlib').sha256(base + seed + owner).digest()
+
+        def allocate(a, w, addr_signed, space):
+            if not addr_signed:
                 raise IxError('MissingRequiredSignature')
+            if a.data or a.owner != SYSTEM:
+                raise IxError('Custom(0)')                 # SystemError::AccountAlreadyInUse
+            if space > 10 * 1024 * 1024:
+                raise IxError('Custom(3)')                 # SystemError::InvalidAccountDataLength
+            self.set_data_length(a, space, w)
+
+        def assign(a, w, addr_signed, owner):
+            if a.owner == owner:
+                return
+            if not addr_signed:
+                raise IxError('MissingRequiredSignature')
+            self.set_owner(a, owner, w)
+
+        def transfer_verified(i, j, n):
+            fa, fw = acc(i)
             if fa.data:
                 raise IxError('InvalidArgument')
             if n > fa.lamports:
-                raise IxError('Custom(1)')                         # SystemError::ResultWithNegativeLamports
+                raise IxError('Custom(1)')                 # SystemError::ResultWithNegativeLamports
             self.set_lamports(fa, fa.lamports - n, fw)
+            ta, tw = acc(j)
+            if ta.lamports + n > M64:
+                raise IxError('ArithmeticOverflow')
             self.set_lamports(ta, ta.lamports + n, tw)
-        elif tag == 1:                                            # assign(owner)
-            if len(d) < 36:
-                raise IxError('InvalidInstructionData')
-            a, s, w = acc(0)
-            owner = d[4:36]
-            if a.owner == owner:
-                return
-            if not s:
+
+        def transfer(i, j, n):
+            if not accs[i][1]:
                 raise IxError('MissingRequiredSignature')
-            self.set_owner(a, owner, w)
-        elif tag == 8:                                            # allocate(space)
-            if len(d) < 12:
-                raise IxError('InvalidInstructionData')
-            space = struct.unpack_from('<Q', d, 4)[0]
-            a, s, w = acc(0)
-            if not s:
+            transfer_verified(i, j, n)
+
+        if len(d) < 4:
+            raise IxError('InvalidInstructionData')
+        tag = struct.unpack_from('<I', d)[0]
+        if tag == 0:                                      # CreateAccount { lamports, space, owner }
+            lam, space, owner = u64(4), u64(12), key_at(20)
+            need(2)
+            to, tw = acc(1)
+            if to.lamports > 0:
+                raise IxError('Custom(0)')
+            allocate(to, tw, accs[1][0] in signers, space)
+            assign(to, tw, accs[1][0] in signers, owner)
+            transfer(0, 1, lam)
+        elif tag == 3:                                    # CreateAccountWithSeed { base, seed, lamports, space, owner }
+            base = key_at(4); seed, o = seed_at(36); lam, space, owner = u64(o), u64(o + 8), key_at(o + 16)
+            need(2)
+            if accs[1][0] != with_seed(base, seed, owner):
+                raise IxError('Custom(5)')                 # SystemError::AddressWithSeedMismatch
+            to, tw = acc(1)
+            if to.lamports > 0:
+                raise IxError('Custom(0)')
+            allocate(to, tw, base in signers, space)
+            assign(to, tw, base in signers, owner)
+            transfer(0, 1, lam)
+        elif tag == 1:                                    # Assign { owner }
+            owner = key_at(4)
+            need(1)
+            a, w = acc(0)
+            assign(a, w, accs[0][0] in signers, owner)
+        elif tag == 2:                                    # Transfer { lamports }
+            n = u64(4)
+            need(2)
+            transfer(0, 1, n)
+        elif tag == 11:                                   # TransferWithSeed { lamports, from_seed, from_owner }
+            n = u64(4); seed, o = seed_at(12); owner = key_at(o)
+            need(3)
+            if not accs[1][1]:
                 raise IxError('MissingRequiredSignature')
-            if a.data or a.owner != SYSTEM:
-                raise IxError('Custom(0)')                         # SystemError::AccountAlreadyInUse
-            if space > 10 * 1024 * 1024:
-                raise IxError('Custom(3)')                         # SystemError::InvalidAccountDataLength
-            self.set_data_length(a, space, w)
+            if accs[0][0] != with_seed(accs[1][0], seed, owner):
+                raise IxError('Custom(5)')
+            transfer_verified(0, 2, n)
+        elif tag == 8:                                    # Allocate { space }
+            space = u64(4)
+            need(1)
+            a, w = acc(0)
+            allocate(a, w, accs[0][0] in signers, space)
+        elif tag == 9:                                    # AllocateWithSeed { base, seed, space, owner }
+            base = key_at(4); seed, o = seed_at(36); space, owner = u64(o), key_at(o + 8)
+            need(1)
+            if accs[0][0] != with_seed(base, seed, owner):
+                raise IxError('Custom(5)')
+            a, w = acc(0)
+            allocate(a, w, base in signers, space)
+            assign(a, w, base in signers, owner)
+        elif tag == 10:                                   # AssignWithSeed { base, seed, owner }
+            base = key_at(4); seed, o = seed_at(36); owner = key_at(o)
+            need(1)
+            if accs[0][0] != with_seed(base, seed, owner):
+                raise IxError('Custom(5)')
+            a, w = acc(0)
+            assign(a, w, base in signers, owner)
+        elif tag in (4, 5, 6, 7, 12, 13):
+            raise NotImplementedError('nonce-account and prefund instructions are not implemented')
         else:
             raise IxError('InvalidInstructionData')
 
@@ -463,6 +552,8 @@ def run_tx(req, truth, vm):
     import json
     accts = [Acct(bytes.fromhex(a['key']), bytes.fromhex(a['owner']), a['lamports'], bytes.fromhex(a['data']), a['executable'])
              for a in truth['pre'] if not a.get('missing')]
+    accts += [Acct(bytes.fromhex(a['key']), SYSTEM, 0, b'', False)       # absent = default account
+              for a in truth['pre'] if a.get('missing')]
     progs = {bytes.fromhex(p['id']): solana.image(p['elf']) for p in req['programs']}
     tx = Tx(accts, progs, vm, req['cu'])
     ix = req['ix']
@@ -475,7 +566,8 @@ def run_tx(req, truth, vm):
     # rent state transitions (transaction level): no writable account may become rent-paying.
     # SIMD-0392 (relax_post_exec_min_balance_check) grandfathers existing below-minimum balances.
     order = message_order(frame)
-    pre = {a['key']: (a['lamports'], len(a['data']) // 2, a['owner']) for a in truth['pre'] if not a.get('missing')}
+    pre = {a['key']: (0, 0, SYSTEM.hex()) if a.get('missing') else (a['lamports'], len(a['data']) // 2, a['owner'])
+           for a in truth['pre']}
     for i, (k, w) in enumerate(order):
         if not w or k not in tx.acc:
             continue

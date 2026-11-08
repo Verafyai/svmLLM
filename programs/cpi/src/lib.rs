@@ -121,28 +121,37 @@ pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
         let ix = SolInstruction { program_id: infos[prog % MAX].key, accounts: metas.as_ptr(), accounts_len: nm as u64, data: idata, data_len: ilen as u64 };
         sol_invoke_signed_c(&ix as *const _ as *const u8, pass.as_ptr() as *const u8, ni as u64, signers.as_ptr() as *const u8, ns as u64)
     } else {
-        let mut mr = [MetaRs { pubkey: [0; 32], is_signer: false, is_writable: false }; MAX];
-        for j in 0..nm.min(MAX) {
-            if !metas[j].pubkey.is_null() { core::ptr::copy_nonoverlapping(metas[j].pubkey, mr[j].pubkey.as_mut_ptr(), 32); }
-            mr[j].is_signer = metas[j].is_signer; mr[j].is_writable = metas[j].is_writable;
-        }
-        let mut lam = [RcLamports { strong: 1, weak: 1, borrow: 0, value: core::ptr::null_mut() }; MAX];
-        let mut dat = [RcData { strong: 1, weak: 1, borrow: 0, ptr: core::ptr::null_mut(), len: 0 }; MAX];
-        let mut ai = [AccountInfoRs { key: core::ptr::null(), lamports: core::ptr::null(), data: core::ptr::null(), owner: core::ptr::null(), unused: 0, is_signer: false, is_writable: false, executable: false }; MAX];
-        for j in 0..ni.min(MAX) {
-            lam[j].value = pass[j].lamports;
-            dat[j].ptr = pass[j].data; dat[j].len = pass[j].data_len;
-            ai[j] = AccountInfoRs { key: pass[j].key, lamports: &lam[j], data: &dat[j], owner: pass[j].owner, unused: pass[j].rent_epoch,
-                                    is_signer: pass[j].is_signer, is_writable: pass[j].is_writable, executable: pass[j].executable };
-        }
-        let mut pid = [0u8; 32];
-        if !infos[prog % MAX].key.is_null() { core::ptr::copy_nonoverlapping(infos[prog % MAX].key, pid.as_mut_ptr(), 32); }
-        let ix = StableInstruction { accounts: StableVec { addr: mr.as_ptr() as u64, cap: MAX as u64, len: nm as u64 },
-                                     data: StableVec { addr: idata as u64, cap: ilen as u64, len: ilen as u64 }, program_id: pid };
-        sol_invoke_signed_rust(&ix as *const _ as *const u8, ai.as_ptr() as *const u8, ni as u64, signers.as_ptr() as *const u8, ns as u64)
+        invoke_rust(&metas, &pass, &infos, prog, nm, ni, idata, ilen, signers.as_ptr() as *const u8, ns)
     };
     if mode & 4 != 0 { abort(); }
     r
+}
+
+
+/// The Rust-ABI path in its own stack frame: Agave frames are 4 KiB, and the C and Rust arrays
+/// together do not fit in one.
+#[inline(never)]
+unsafe fn invoke_rust(metas: &[SolAccountMeta; MAX], pass: &[SolAccountInfo; MAX], infos: &[SolAccountInfo; MAX], prog: usize,
+                      nm: usize, ni: usize, idata: *const u8, ilen: usize, signers: *const u8, ns: usize) -> u64 {
+    let mut mr = [MetaRs { pubkey: [0; 32], is_signer: false, is_writable: false }; MAX];
+    for j in 0..nm.min(MAX) {
+        if !metas[j].pubkey.is_null() { core::ptr::copy_nonoverlapping(metas[j].pubkey, mr[j].pubkey.as_mut_ptr(), 32); }
+        mr[j].is_signer = metas[j].is_signer; mr[j].is_writable = metas[j].is_writable;
+    }
+    let mut lam = [RcLamports { strong: 1, weak: 1, borrow: 0, value: core::ptr::null_mut() }; MAX];
+    let mut dat = [RcData { strong: 1, weak: 1, borrow: 0, ptr: core::ptr::null_mut(), len: 0 }; MAX];
+    let mut ai = [AccountInfoRs { key: core::ptr::null(), lamports: core::ptr::null(), data: core::ptr::null(), owner: core::ptr::null(), unused: 0, is_signer: false, is_writable: false, executable: false }; MAX];
+    for j in 0..ni.min(MAX) {
+        lam[j].value = pass[j].lamports;
+        dat[j].ptr = pass[j].data; dat[j].len = pass[j].data_len;
+        ai[j] = AccountInfoRs { key: pass[j].key, lamports: &lam[j], data: &dat[j], owner: pass[j].owner, unused: pass[j].rent_epoch,
+                                is_signer: pass[j].is_signer, is_writable: pass[j].is_writable, executable: pass[j].executable };
+    }
+    let mut pid = [0u8; 32];
+    if !infos[prog % MAX].key.is_null() { core::ptr::copy_nonoverlapping(infos[prog % MAX].key, pid.as_mut_ptr(), 32); }
+    let ix = StableInstruction { accounts: StableVec { addr: mr.as_ptr() as u64, cap: MAX as u64, len: nm as u64 },
+                                 data: StableVec { addr: idata as u64, cap: ilen as u64, len: ilen as u64 }, program_id: pid };
+    sol_invoke_signed_rust(&ix as *const _ as *const u8, ai.as_ptr() as *const u8, ni as u64, signers, ns as u64)
 }
 
 #[panic_handler]

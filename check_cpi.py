@@ -8,7 +8,10 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 CPI_ELF = os.path.join(ROOT, 'programs/cpi/target/deploy/cpi.so')
 EX_ELF = os.path.join(ROOT, 'programs/exerciser/target/deploy/exerciser.so')
 CPI, EX, SYS = H('cpi'), H('exerciser'), bytes(32)
-A, B, C = H('acct-a'), H('acct-b'), H('acct-c')
+A, B, C, D = H('acct-a'), H('acct-b'), H('acct-c'), H('acct-d')
+E_OWNER = CPI
+E = hashlib.sha256(H('acct-b') + b'abc' + E_OWNER).digest()
+F = hashlib.sha256(H('acct-b') + b'xyz' + bytes(32)).digest()
 
 
 def ex_ops(rng):
@@ -30,16 +33,34 @@ def cpi_data(rng, keys, depth):
     pid = {'ex': EX, 'sys': SYS, 'self': CPI}[target]
     prog = keys.index(pid) if pid in keys and rng.random() < 0.95 else rng.randrange(len(keys))
     if target == 'sys':
-        tag = rng.choice([2, 2, 1, 8])
+        tag = rng.choice([2, 2, 1, 8, 0, 0, 11, 3, 9, 10])
         if tag == 2:
             inner = [(ix_of(keys, B), 1, 1), (ix_of(keys, A), 0, 1)]
             data = struct.pack('<IQ', 2, rng.choice([0, 1, 5, 10**6, 10**12]))
         elif tag == 1:
             inner = [(ix_of(keys, B), 1, 1)]
             data = struct.pack('<I', 1) + rng.choice([CPI, EX, SYS])
-        else:
+        elif tag == 8:
             inner = [(ix_of(keys, B), 1, 1)]
             data = struct.pack('<IQ', 8, rng.choice([0, 8, 100]))
+        elif tag == 0:                       # create account D, funded by B
+            inner = [(ix_of(keys, B), 1, 1), (ix_of(keys, D), 1, 1)]
+            data = struct.pack('<IQQ', 0, rng.choice([0, 10**6, 10**9 * 2]), rng.choice([0, 16, 64])) + rng.choice([CPI, EX, SYS])
+        elif tag in (3, 9, 10):              # seeded: E = with_seed(B, b"abc", owner)
+            owner = E_OWNER if rng.random() < 0.85 else EX
+            seed = struct.pack('<Q', 3) + b'abc'
+            if tag == 3:
+                inner = [(ix_of(keys, B), 1, 1), (ix_of(keys, E), 0, 1), (ix_of(keys, B), 1, 0)]
+                data = struct.pack('<I', 3) + B + seed + struct.pack('<QQ', rng.choice([10**6, 0]), rng.choice([0, 32])) + owner
+            elif tag == 9:
+                inner = [(ix_of(keys, E), 0, 1), (ix_of(keys, B), 1, 0)]
+                data = struct.pack('<I', 9) + B + seed + struct.pack('<Q', rng.choice([0, 32])) + owner
+            else:
+                inner = [(ix_of(keys, E), 0, 1), (ix_of(keys, B), 1, 0)]
+                data = struct.pack('<I', 10) + B + seed + owner
+        else:                                # transfer with seed from F = with_seed(B, b"xyz", SYS)
+            inner = [(ix_of(keys, F), 0, 1), (ix_of(keys, B), 1, 0), (ix_of(keys, A), 0, 1)]
+            data = struct.pack('<IQ', 11, rng.choice([1, 500])) + struct.pack('<Q', 3) + b'xyz' + rng.choice([SYS, SYS, CPI])
     elif target == 'ex':
         inner = [(ix_of(keys, rng.choice([A, C])), 0, 1)]
         data = ex_ops(rng)
@@ -65,8 +86,12 @@ def gen(rng):
     sizes = {A: rng.choice([1024, 1024, 0, 64]), B: 0, C: 1024}
     accounts = [{'key': k.hex(), 'owner': owners[k].hex(), 'lamports': rng.choice([10**9, 10**9, 900000, 1]),
                  'data': ('00' * sizes[k])} for k in (A, B, C)]
-    keys = [A, B, C, EX, SYS, CPI]
-    flags = {A: (0, 1), B: (rng.random() < 0.8, 1), C: (0, rng.random() < 0.9), EX: (0, 0), SYS: (0, 0), CPI: (0, 0)}
+    accounts += [{'key': D.hex(), 'owner': SYS.hex(), 'lamports': rng.choice([0, 0, 5]), 'data': ''},
+                 {'key': E.hex(), 'owner': SYS.hex(), 'lamports': rng.choice([0, 0, 10**9]), 'data': ''},
+                 {'key': F.hex(), 'owner': SYS.hex(), 'lamports': 10**9, 'data': ''}]
+    keys = [A, B, C, EX, SYS, CPI, D, E, F]
+    flags = {A: (0, 1), B: (rng.random() < 0.8, 1), C: (0, rng.random() < 0.9), EX: (0, 0), SYS: (0, 0), CPI: (0, 0),
+             D: (rng.random() < 0.8, 1), E: (0, 1), F: (0, 1)}
     metas = [{'key': k.hex(), 'signer': bool(flags[k][0]), 'writable': bool(flags[k][1])} for k in keys]
     cu = 200000 if rng.random() < 0.85 else rng.choice([1500, 3000, 6000])
     return {'cu': cu, 'programs': [{'id': CPI.hex(), 'elf': CPI_ELF}, {'id': EX.hex(), 'elf': EX_ELF}],
