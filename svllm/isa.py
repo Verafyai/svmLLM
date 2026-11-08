@@ -33,6 +33,13 @@ for s, m in SIZES.items():
     OPCODES[0x61 | m] = ('ldx', s, True)
     OPCODES[0x63 | m] = ('stx', s, True)
     OPCODES[0x62 | m] = ('st', s, False)
+for n, h in ALU_OPS.items():          # ALU32 class (SBPF v0 semantics, see ref.py)
+    OPCODES[0x04 | h] = ('alu32', n, False)
+    if n != 'neg':
+        OPCODES[0x0c | h] = ('alu32', n, True)
+LE, BE = 0xd4, 0xdc                    # byte order: imm = 16, 32 or 64
+OPCODES[LE] = ('end', 'le', False)
+OPCODES[BE] = ('end', 'be', False)
 OPCODES[CALL] = ('call', None, False)
 OPCODES[EXIT] = ('exit', None, False)
 OPCODES[LDDW] = ('lddw', None, False)
@@ -107,14 +114,18 @@ def assemble(text):
             out += enc(LDDW, _reg(args[0]), imm=struct.unpack('<i', struct.pack('<I', lo))[0])
             out += enc(0, imm=struct.unpack('<i', struct.pack('<I', hi))[0])
             pc += 1
-        elif base in ALU_OPS and m.group(2) == '64':
+        elif base in ALU_OPS and m.group(2) in ('64', '32'):
             h = ALU_OPS[base]
+            ci, cr = (0x07, 0x0f) if m.group(2) == '64' else (0x04, 0x0c)
             if base == 'neg':
-                out += enc(0x87, _reg(args[0]))
+                out += enc(ci | 0x80, _reg(args[0]))
             elif args[1].startswith('r'):
-                out += enc(0x0f | h, _reg(args[0]), _reg(args[1]))
+                out += enc(cr | h, _reg(args[0]), _reg(args[1]))
             else:
-                out += enc(0x07 | h, _reg(args[0]), imm=_int(args[1]))
+                out += enc(ci | h, _reg(args[0]), imm=_int(args[1]))
+        elif re.fullmatch(r'(le|be)(16|32|64)', mn):
+            mm = re.fullmatch(r'(le|be)(16|32|64)', mn)
+            out += enc(LE if mm.group(1) == 'le' else BE, _reg(args[0]), imm=int(mm.group(2)))
         elif base in JMP_OPS:
             h = JMP_OPS[base]
             if base == 'ja':
@@ -148,10 +159,13 @@ def disasm_one(b, i):
     if op not in OPCODES:
         return f'.invalid 0x{op:02x}'
     kind, n, reg = OPCODES[op]
-    if kind == 'alu':
+    if kind in ('alu', 'alu32'):
+        w = '64' if kind == 'alu' else '32'
         if n == 'neg':
-            return f'neg64 r{d}'
-        return f'{n}64 r{d}, ' + (f'r{s}' if reg else f'{imm}')
+            return f'neg{w} r{d}'
+        return f'{n}{w} r{d}, ' + (f'r{s}' if reg else f'{imm}')
+    if kind == 'end':
+        return f'{n}{imm} r{d}'
     if kind == 'jmp':
         t = f'{off:+d}'
         if n == 'ja':

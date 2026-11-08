@@ -21,20 +21,25 @@ def gen(rng, n=None):
     while len(body) < n:
         k = rng.random()
         d = rng.choice(WREGS)
-        if k < 0.55:
+        if k < 0.04:
+            op = 0xd4 if rng.random() < 0.5 else 0xdc          # le / be
+            body.append(('i', enc(op, d, imm=rng.choice([16, 32, 64, 16, 32, 64, 8]))))
+        elif k < 0.55:
             name = rng.choice(list(ALU_OPS))
             h = ALU_OPS[name]
+            w32 = rng.random() < 0.4
+            ci, cr = (0x04, 0x0c) if w32 else (0x07, 0x0f)
             if name == 'neg':
-                body.append(('i', enc(0x87, d)))
+                body.append(('i', enc(ci | 0x80, d)))
             elif rng.random() < 0.5:
-                body.append(('i', enc(0x0f | h, d, rng.choice(WREGS + [1, 10]))))
+                body.append(('i', enc(cr | h, d, rng.choice(WREGS + [1, 10]))))
             else:
                 imm = rand_imm(rng)
                 if name in ('lsh', 'rsh', 'arsh'):
-                    imm = rng.randint(0, 63)
-                if name in ('div', 'mod') and imm == 0:
-                    imm = 3
-                body.append(('i', enc(0x07 | h, d, imm=imm)))
+                    imm = rng.randint(0, 31 if w32 else 63)
+                if name in ('div', 'mod') and (imm & 0xffffffff if w32 else imm) == 0:
+                    imm = 3                                     # the verifier rejects these
+                body.append(('i', enc(ci | h, d, imm=imm)))
         elif k < 0.75:
             name = rng.choice(list(JMP_OPS))
             off = rng.randint(1, 4) if rng.random() < 0.85 else -rng.randint(1, 4)

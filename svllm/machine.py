@@ -121,6 +121,7 @@ L_KRON = LUT([16, 16], [256], lambda a, b: a | (b << 4))
 P_NOT = const(torch.eye(16).flip(0))                     # x -> 15 - x
 P_FLIP8 = const(torch.eye(16)[[i ^ 8 for i in range(16)]])  # x -> x ^ 8 (as row perm)
 SIGN_IND = const([1.0 if i >= 8 else 0.0 for i in range(16)])  # top bit of a limb
+P_AND1 = const(torch.eye(16)[[i & 1 for i in range(16)]])   # one-hot x -> one-hot (x & 1)
 SHIFT256 = [const(torch.roll(torch.eye(256), k, dims=1)) for k in range(8)]  # one-hot addr + k
 
 
@@ -219,17 +220,35 @@ def sext(limbs, n=16):           # sign-extend a limb vector to n limbs (linear 
     return torch.cat([limbs, fill.expand(n - limbs.shape[0], NIB)])
 
 
+def zx(L):                       # zero-extend a limb vector to 16 limbs
+    return torch.cat([L, ZN.expand(16 - L.shape[0], NIB)])
+
+
+def byteswap(A, nb):             # reverse the low nb bytes (a fixed wiring), zero-extend
+    out = []
+    for j in range(nb):
+        k = nb - 1 - j
+        out += [A[2 * k], A[2 * k + 1]]
+    return zx(torch.stack(out))
+
+
 # ---------------------------------------------------------------- decode table
 ALU_NAMES = ['add', 'sub', 'mul', 'div', 'or', 'and', 'lsh', 'rsh', 'neg', 'mod', 'xor', 'mov', 'arsh']
 JMP_NAMES = ['ja', 'jeq', 'jgt', 'jge', 'jset', 'jne', 'jsgt', 'jsge', 'jlt', 'jle', 'jslt', 'jsle']
 SZ = {'b': 0, 'h': 1, 'w': 2, 'dw': 3}
-CTRL = (['valid', 'use_reg', 'is_alu', 'is_jmp', 'is_ldx', 'is_stx', 'is_st', 'is_lddw', 'is_call', 'is_exit']
+CTRL = (['valid', 'use_reg', 'is_alu', 'is_jmp', 'is_ldx', 'is_stx', 'is_st', 'is_lddw', 'is_call', 'is_exit',
+         'w32', 'is_end', 'end_be']
         + ['alu_' + n for n in ALU_NAMES] + ['j_' + n for n in JMP_NAMES] + ['sz' + str(i) for i in range(4)])
 CI = {n: i for i, n in enumerate(CTRL)}
 _dec = torch.zeros(256, len(CTRL))
 for op, (kind, name, reg) in OPCODES.items():
     _dec[op, CI['valid']] = 1; _dec[op, CI['use_reg']] = float(reg)
-    _dec[op, CI['is_' + kind]] = 1
+    if kind == 'alu32':
+        _dec[op, CI['is_alu']] = 1; _dec[op, CI['w32']] = 1; _dec[op, CI['alu_' + name]] = 1
+    elif kind == 'end':
+        _dec[op, CI['is_end']] = 1; _dec[op, CI['end_be']] = float(name == 'be')
+    else:
+        _dec[op, CI['is_' + kind]] = 1
     if kind == 'alu': _dec[op, CI['alu_' + name]] = 1
     if kind == 'jmp': _dec[op, CI['j_' + name]] = 1
     if kind in ('ldx', 'stx', 'st'): _dec[op, CI['sz%d' % SZ[name]]] = 1
@@ -310,13 +329,36 @@ class Machine:
             'rsh': lambda: shift(A, B, 'rsh'), 'arsh': lambda: shift(A, B, 'arsh'),
             'neg': lambda: sub(word(0), A)[0], 'mov': lambda: B,
         }
+        # 32-bit forms (SBPF v0): add/sub/mul sign-extend the low 32 bits, the rest zero-extend
+        Az, Bz = zx(A[:8]), zx(B[:8])
+        Bs = zx(torch.stack([B[0], B[1] @ P_AND1]))      # shift amount & 31
+        branches32 = {
+            'add': lambda: sext(add(A, B, onehot(0, 2))[0][:8]), 'sub': lambda: sext(sub(A, B)[0][:8]),
+            'mul': lambda: sext(mul(A, B)[:8]), 'div': lambda: divmod_(Az, Bz)[0], 'mod': lambda: divmod_(Az, Bz)[1],
+            'or': lambda: zx(bitwise(L_OR, A, B)[:8]), 'and': lambda: zx(bitwise(L_AND, A, B)[:8]),
+            'xor': lambda: zx(bitwise(L_XOR, A, B)[:8]), 'lsh': lambda: zx(shift(Az, Bs, 'lsh')[:8]),
+            'rsh': lambda: shift(Az, Bs, 'rsh'), 'arsh': lambda: zx(shift(sext(A[:8]), Bs, 'arsh')[:8]),
+            'neg': lambda: zx(sub(word(0), A)[0][:8]), 'mov': lambda: Bz,
+        }
+        w32 = g('w32')
         alu = torch.zeros(16, NIB)
         for n, f in branches.items():
             gn = g('alu_' + n)
             if self.lazy and float(gn) == 0.0:
                 continue                                 # gate is 0: contribution is exactly 0
-            alu = alu + gate(f(), gn)
-        div0 = AND(OR(g('alu_div'), g('alu_mod')), is_zero(B))
+            f32 = branches32[n]
+            if self.lazy:
+                v = f32() if float(w32) else f()
+            else:
+                v = mux(w32, f32(), f())
+            alu = alu + gate(v, gn)
+        div0 = AND(OR(g('alu_div'), g('alu_mod')), mux(w32, is_zero(B[:8]), is_zero(B)))
+        # byte order (le/be): imm selects the width 16, 32 or 64
+        wid = [eq(imm, word(16)), eq(imm, word(32)), eq(imm, word(64))]
+        le_v = gate(zx(A[:4]), wid[0]) + gate(zx(A[:8]), wid[1]) + gate(A, wid[2])
+        be_v = gate(byteswap(A, 2), wid[0]) + gate(byteswap(A, 4), wid[1]) + gate(byteswap(A, 8), wid[2])
+        end_v = mux(g('end_be'), be_v, le_v)
+        end_bad = AND(g('is_end'), NOT(wid[0] + wid[1] + wid[2]))
         # ---------------- branch condition
         e = eq(A, B)
         _, ult = sub(A, B)
@@ -353,7 +395,7 @@ class Machine:
         loaded = torch.cat(ld)
         # ---------------- errors and halt
         overrun = AND(NOT(cu_exc), NOT(present))
-        invalid = AND(NOT(cu_exc), present, NOT(g('valid')))
+        invalid = AND(NOT(cu_exc), present, OR(NOT(g('valid')), end_bad))
         div0, memviol = AND(div0, NOT(cu_exc)), AND(memviol, NOT(cu_exc))
         err = torch.stack([cu_exc, overrun, invalid, div0, memviol])
         ok = NOT(err.sum().clamp(max=1.0))
@@ -364,9 +406,9 @@ class Machine:
             self.mem.write(abyte @ SHIFT256[k], sval[2 * k:2 * k + 2].flatten(), AND(st_on, live[k]))
         lddw_v = torch.cat([row[353:481].view(8, NIB), row2[353:481].view(8, NIB)])
         wval = (gate(alu, g('is_alu')) + gate(loaded, g('is_ldx')) + gate(lddw_v, g('is_lddw'))
-                + gate(word(0), g('is_call')))
+                + gate(word(0), g('is_call')) + gate(end_v, g('is_end')))
         wkey = mux(g('is_call'), onehot(0, 16), dst)
-        wr = AND(OR(OR(g('is_alu'), g('is_ldx')), OR(g('is_lddw'), g('is_call'))), ok)
+        wr = AND(OR(OR(OR(g('is_alu'), g('is_ldx')), OR(g('is_lddw'), g('is_call'))), g('is_end')), ok)
         self.regs.write(wkey, wval.flatten(), wr)
         self.pc = mux(ok, next_pc, self.pc)
         exit_ = AND(g('is_exit'), ok)
