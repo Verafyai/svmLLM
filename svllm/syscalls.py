@@ -19,7 +19,9 @@ SYS = ['abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove_', 'sol_m
        'sol_log_compute_units_', 'sol_panic_', 'sol_sha256', 'sol_keccak256', 'sol_log_pubkey', 'sol_log_data',
        'sol_set_return_data', 'sol_get_return_data', 'sol_get_stack_height', 'sol_get_clock_sysvar',
        'sol_get_epoch_schedule_sysvar', 'sol_get_rent_sysvar', 'sol_get_epoch_rewards_sysvar', 'sol_get_last_restart_slot',
-       'sol_get_sysvar', 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction']
+       'sol_get_sysvar', 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction',
+       'sol_create_program_address', 'sol_try_find_program_address']
+PDA_MARKER = b'ProgramDerivedAddress'
 MM_INPUT_W = word(4 << 32)
 HEAP_W = word(32 * 1024)
 HEXCH = LUT([16], [256], lambda n: ord('0123456789abcdef'[n]))
@@ -386,6 +388,69 @@ def program(m, name):
     if name == 'sol_get_processed_sibling_instruction':
         x.consume(word(100))
         return word(0)                                          # one top-level instruction: no siblings
+
+    if name in ('sol_create_program_address', 'sol_try_find_program_address'):
+        from .crypto import Sha256
+        from .bignum import is_curve_point
+        x.consume(word(1500))
+        pv = x.xlate(R1, _times16(R2), False, align=8)
+        if float(lt(word(16), R2)):
+            raise SysFail('BadSeeds')
+        seeds, k = [], word(0)
+        while pv is not None and not float(eq(k, R2)):
+            base = x.at(pv, _times16(k))
+            ptr, ln = x.rword(base), x.rword(x.at(base, 8))
+            if float(lt(word(32), ln)):
+                raise SysFail('BadSeeds')
+            p = x.xlate(ptr, ln, False)
+            seed, i = [], word(0)
+            while p is not None and not float(eq(i, ln)):
+                seed.append(x.rbyte(x.at(p, i)))
+                i = add(i, word(0), onehot(1, 2))[0]
+            seeds.append(seed)
+            k = add(k, word(0), onehot(1, 2))[0]
+            yield
+        pp = x.xlate(R3, word(32), False)
+        pid = [x.rbyte(x.at(pp, j)) for j in range(32)]
+
+        def derive(extra):
+            if len(seeds) + len(extra) > 16:
+                return None
+            h = Sha256()
+            for s in seeds + extra:
+                for b in s:
+                    h.byte(b)
+            for b in pid + [word(c, 2) for c in PDA_MARKER]:
+                h.byte(b)
+            out = h.digest()
+            return None if float(is_curve_point(out)) else out
+
+        if name == 'sol_create_program_address':
+            addr = derive([])
+            yield
+            if addr is None:
+                return word(1)
+            pa = x.xlate(R4, word(32), True)
+            for j in range(32):
+                x.wbyte(x.at(pa, j), addr[j])
+            return word(0)
+        bump = word(255, 2)
+        for _ in range(255):
+            addr = derive([[bump]])
+            yield
+            if addr is not None:
+                pb, pa = x.xlate(R5, word(1), True), x.xlate(R4, word(32), True)
+                far = mux(lt(pa, pb), NOT(lt(sub(pb, pa)[0], word(32, AL))), NOT(lt(sub(pa, pb)[0], word(1, AL))))
+                if not float(far):
+                    raise SysFail('CopyOverlapping')
+                x.wbyte(pb, bump)
+                for j in range(32):
+                    x.wbyte(x.at(pa, j), addr[j])
+                return word(0)
+            nb, borrow = sub(bump, word(1, 2))
+            bump = mux(borrow, word(0, 2), nb)
+            x.consume(word(1500))
+        return word(1)
 
     raise SysFail('Unsupported:' + name)
 

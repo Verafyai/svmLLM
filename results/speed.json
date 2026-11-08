@@ -1,0 +1,60 @@
+{
+ "machine": "2 CPU cores, no GPU; weights on one thread, lazy mode",
+ "kernels": {
+  "alu (add, xor, shifts)": {
+   "weights_ms_per_insn": 2.52,
+   "weights_insn_per_s": 396.2,
+   "anza_ns_per_insn": 8.5,
+   "anza_insn_per_s": 117623253,
+   "slowdown": 296892,
+   "status": [
+    "ok",
+    "ok"
+   ]
+  },
+  "mul": {
+   "weights_ms_per_insn": 11.52,
+   "weights_insn_per_s": 86.8,
+   "anza_ns_per_insn": 8.9,
+   "anza_insn_per_s": 112776298,
+   "slowdown": 1299258,
+   "status": [
+    "ok",
+    "ok"
+   ]
+  },
+  "div and mod": {
+   "weights_ms_per_insn": 38.34,
+   "weights_insn_per_s": 26.1,
+   "anza_ns_per_insn": 9.7,
+   "anza_insn_per_s": 102656254,
+   "slowdown": 3936111,
+   "status": [
+    "ok",
+    "ok"
+   ]
+  },
+  "memory (stack load/store)": {
+   "weights_ms_per_insn": 8.06,
+   "weights_insn_per_s": 124.0,
+   "anza_ns_per_insn": 13.3,
+   "anza_insn_per_s": 75295692,
+   "slowdown": 607172,
+   "status": [
+    "ok",
+    "ok"
+   ]
+  },
+  "calls": {
+   "weights_ms_per_insn": 3.67,
+   "weights_insn_per_s": 272.7,
+   "anza_ns_per_insn": 9.1,
+   "anza_insn_per_s": 109469098,
+   "slowdown": 401364,
+   "status": [
+    "ok",
+    "ok"
+   ]
+  }
+ }
+}

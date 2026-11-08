@@ -119,6 +119,26 @@ def sysvar_struct(name):
     return b, 8                                      # clock (5 x u64), last_restart_slot (u64)
 
 
+P25519 = 2**255 - 19
+D25519 = (-121665 * pow(121666, P25519 - 2, P25519)) % P25519
+
+
+def on_curve(b):
+    """curve25519-dalek's CompressedEdwardsY::decompress().is_some(): (y^2-1)(d y^2+1) is a square."""
+    y = int.from_bytes(b, 'little') & (2**255 - 1)
+    y2 = y * y % P25519
+    w = (y2 - 1) * (D25519 * y2 + 1) % P25519
+    return pow(w, (P25519 - 1) // 2, P25519) in (0, 1)
+
+
+def pda(seeds, pid):
+    """Pubkey::create_program_address, or None."""
+    if len(seeds) > 16 or any(len(s) > 32 for s in seeds):
+        return None
+    h = hashlib.sha256(b''.join(seeds) + pid + b'ProgramDerivedAddress').digest()
+    return None if on_curve(h) else h
+
+
 SYSVAR_CALLS = {'sol_get_clock_sysvar': 'clock', 'sol_get_epoch_schedule_sysvar': 'epoch_schedule',
                 'sol_get_rent_sysvar': 'rent', 'sol_get_epoch_rewards_sysvar': 'epoch_rewards',
                 'sol_get_last_restart_slot': 'last_restart_slot'}
@@ -250,6 +270,36 @@ def syscall(name, r, mem, cu, limit, logs, rd):
                 return cu, 1
             b, o = sl(a2, a4, True)
             if a4: b[o:o + a4] = buf[a3:a3 + a4]
+        elif name in ('sol_create_program_address', 'sol_try_find_program_address'):
+            consume(1500)
+            vs = vmslices(a1, a2)
+            if len(vs) > 16:
+                raise VMError('BadSeeds')
+            seeds = []
+            for p, n in vs:
+                if n > 32:
+                    raise VMError('BadSeeds')
+                b, o = sl(p, n); seeds.append(bytes(b[o:o + n]) if n else b'')
+            pb, po = typ(a3, 32, 1)
+            pid = bytes(pb[po:po + 32])
+            if name == 'sol_create_program_address':
+                addr = pda(seeds, pid)
+                if addr is None:
+                    return cu, 1
+                b, o = mem.at(a4, 32, True); b[o:o + 32] = addr
+                return cu, 0
+            bump = 255
+            for _ in range(255):
+                addr = pda(seeds + [bytes([bump])], pid)
+                if addr is not None:
+                    bb, bo = mem.at(r[5], 1, True); ab, ao = mem.at(a4, 32, True)
+                    if bb is ab and not (bo - ao >= 32 if bo > ao else ao - bo >= 1):
+                        raise VMError('CopyOverlapping')
+                    bb[bo] = bump; ab[ao:ao + 32] = addr
+                    return cu, 0
+                bump = max(bump - 1, 0)
+                consume(1500)
+            return cu, 1
         elif name == 'sol_get_epoch_stake':
             if a1 == 0:
                 consume(100); return cu, 0

@@ -221,7 +221,8 @@ OUT_VM = 0x400000000 + 96                    # account 0's data, one account, no
 TAGS = {'memmove': 0, 'memcmp': 1, 'memcpy': 2, 'memset': 3, 'log': 4, 'log64': 5, 'logcu': 6, 'panic': 7,
         'sha256': 8, 'keccak': 9, 'logpubkey': 10, 'logdata': 11, 'setret': 12, 'getret': 13, 'height': 14,
         'remaining': 15, 'abort': 16, 'clock': 17, 'epoch_schedule': 18, 'rent': 19, 'epoch_rewards': 20,
-        'last_restart': 21, 'get_sysvar': 22, 'epoch_stake': 23, 'alloc': 24, 'sibling': 25}
+        'last_restart': 21, 'get_sysvar': 22, 'epoch_stake': 23, 'alloc': 24, 'sibling': 25, 'pda': 26,
+        'find_pda': 27}
 
 
 def gen_exerciser(rng):
@@ -292,6 +293,10 @@ def gen_exerciser(rng):
             args = [rng.choice([0, OUT_VM + 300, OUT_VM + 1020, 0x500000000])]
         elif name == 'alloc':
             args = [rng.choice([0, 1, 7, 100, 4096, 32768, 40000, 2**63]), rng.choice([0, 0, 0, 0x300000000])]
+        elif name in ('pda', 'find_pda'):
+            seeds_at = rng.choice([OUT_VM, OUT_VM, OUT_VM + 4, 0x500000000])
+            args = [seeds_at, rng.choice([0, 1, 2, nsl, 17]), rng.choice([OUT_VM + 300, OUT_VM + 340, OUT_VM + 1020]),
+                    rng.choice([OUT_VM + 600, OUT_VM + 1000, 0x100000000]), rng.choice([OUT_VM + 640, OUT_VM + 610, OUT_VM + 600])]
         elif name == 'sibling':
             args = [rng.choice([0, 1, 5]), OUT_VM + 600, OUT_VM + 700, OUT_VM + 800, OUT_VM + 900]
         else:
