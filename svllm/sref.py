@@ -319,11 +319,110 @@ def syscall(name, r, mem, cu, limit, logs, rd):
             consume(100); return cu, (len(rd['ctx']['tx'].stack) if rd.get('ctx') else 1)
         elif name == 'sol_remaining_compute_units':
             consume(100); return cu, limit - cu
+        elif name in CURVE_CALLS:
+            return curve_syscall(name, r, mem, consume, typ, sl, lambda: cu)
         return cu, 0
     except SysError:
         raise
     except VMError as e:
         raise SysError(e.kind, cu)
+
+
+CURVE_CALLS = ('sol_curve_validate_point', 'sol_curve_group_op', 'sol_curve_multiscalar_mul', 'sol_secp256k1_recover',
+               'sol_alt_bn128_group_op', 'sol_alt_bn128_compression', 'sol_poseidon', 'sol_curve_decompress',
+               'sol_curve_pairing_map')
+BN_OPS = {0: (334, 64), 4: (535, 128), 2: (3840, 64), 6: (15670, 128), 3: (None, 32)}
+BN_COMP = {0: (130, 32), 1: (498, 64), 2: (186, 64), 3: (13710, 128)}
+C25519_COST = {(0, 'v'): 159, (0, 0): 473, (0, 1): 475, (0, 2): 2177, (0, 'msm'): (2273, 758),
+               (1, 'v'): 169, (1, 0): 521, (1, 1): 519, (1, 2): 2208, (1, 'msm'): (2303, 788)}
+
+
+def curve_syscall(name, r, mem, consume, typ, sl, cu):
+    """The curve syscalls, in Agave 4.3.2's order: cost, input translation, compute, then the
+    result translation only on success. Results are 0 (success) or 1 (not a valid input)."""
+    from . import curves
+    a1, a2, a3, a4, a5 = r[1], r[2], r[3], r[4], r[5]
+    rd32 = lambda a: (lambda b, o: bytes(b[o:o + 32]))(*typ(a, 32, 1))
+
+    def write(addr, data):
+        b, o = typ(addr, len(data), 1, True)
+        b[o:o + len(data)] = data
+
+    if name in ('sol_alt_bn128_group_op', 'sol_alt_bn128_compression'):
+        table = BN_OPS if name == 'sol_alt_bn128_group_op' else BN_COMP
+        if a1 & ~0x80 not in table:
+            raise VMError('InvalidAttribute')
+        cost, size = table[a1 & ~0x80]
+        if cost is None:                                   # pairing
+            cost = min(36364 + 12121 * max(a3 // 192 - 1, 0) + 85 + a3 + 32, 2**64 - 1)
+        consume(cost)
+        sl(a4, size, True)
+        ib, io = sl(a2, a3)
+        inp = bytes(ib[io:io + a3]) if a3 else b''
+        fn = curves.bn_group_op if name == 'sol_alt_bn128_group_op' else curves.bn_compression
+        code, out = fn(a1, inp)
+        if code:
+            return cu(), 1
+        b, o = sl(a4, size, True); b[o:o + size] = out
+        return cu(), 0
+    if name == 'sol_poseidon':
+        if a1 != 0 or a2 not in (0, 1):
+            raise VMError('PoseidonError')
+        if a4 > 12:
+            raise VMError('InvalidLength')
+        consume(61 * a4 * a4 + 542)
+        sl(a5, 32, True)
+        vals = []
+        if a4:
+            db, do = typ(a3, 16 * a4, 8)
+            for i in range(a4):
+                ptr = int.from_bytes(db[do + 16 * i:do + 16 * i + 8], 'little')
+                n = int.from_bytes(db[do + 16 * i + 8:do + 16 * i + 16], 'little')
+                b, o = sl(ptr, n)
+                vals.append(bytes(b[o:o + n]) if n else b'')
+        code, out = curves.poseidon_hashv(a1, a2, vals)
+        if code:
+            return cu(), 1
+        b, o = sl(a5, 32, True); b[o:o + 32] = out
+        return cu(), 0
+    if name == 'sol_secp256k1_recover':
+        consume(25000)
+        typ(a4, 64, 1, True)
+        hb, ho = sl(a1, 32); sb, so = sl(a3, 64)
+        code, pub = curves.secp256k1_recover(bytes(hb[ho:ho + 32]), a2, bytes(sb[so:so + 64]))
+        if code:
+            return cu(), code
+        write(a4, pub)
+        return cu(), 0
+    if name == 'sol_curve_validate_point':
+        if a1 not in (0, 1):
+            raise VMError('InvalidAttribute')
+        consume(C25519_COST[(a1, 'v')])
+        return cu(), 0 if curves.c25519_validate(a1, rd32(a2)) else 1
+    if name == 'sol_curve_group_op':
+        if a1 not in (0, 1) or a2 not in (0, 1, 2):
+            raise VMError('InvalidAttribute')
+        consume(C25519_COST[(a1, a2)])
+        out = curves.c25519_group(a1, a2, rd32(a3), rd32(a4))
+        if out is None:
+            return cu(), 1
+        write(a5, out)
+        return cu(), 0
+    # sol_curve_multiscalar_mul(curve, scalars, points, n, result)
+    if a4 > 512:
+        raise VMError('InvalidLength')
+    if a1 not in (0, 1):
+        raise VMError('InvalidAttribute')
+    base, inc = C25519_COST[(a1, 'msm')]
+    consume(min(base + inc * max(a4 - 1, 0), 2**64 - 1))
+    sb, so = sl(a2, 32 * a4); pb, po = sl(a3, 32 * a4)
+    ss = [bytes(sb[so + 32 * i:so + 32 * i + 32]) for i in range(a4)]
+    ps = [bytes(pb[po + 32 * i:po + 32 * i + 32]) for i in range(a4)]
+    out = curves.c25519_msm(a1, ss, ps)
+    if out is None:
+        return cu(), 1
+    write(a5, out)
+    return cu(), 0
 
 
 class SysError(VMError):
