@@ -16,7 +16,12 @@ MAX_PERMITTED_DATA_INCREASE = 10 * 1024
 SYSCALL_NAMES = ('abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove_', 'sol_memcmp_', 'sol_log_64_',
                  'sol_log_compute_units_', 'sol_panic_', 'sol_sha256', 'sol_keccak256', 'sol_log_pubkey',
                  'sol_log_data', 'sol_set_return_data', 'sol_get_return_data', 'sol_get_stack_height',
-                 'sol_remaining_compute_units')
+                 'sol_remaining_compute_units', 'sol_get_clock_sysvar', 'sol_get_epoch_schedule_sysvar',
+                 'sol_get_rent_sysvar', 'sol_get_epoch_rewards_sysvar', 'sol_get_last_restart_slot', 'sol_get_sysvar',
+                 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction',
+                 'sol_create_program_address', 'sol_try_find_program_address', 'sol_curve_validate_point',
+                 'sol_curve_group_op', 'sol_curve_multiscalar_mul', 'sol_curve_decompress', 'sol_curve_pairing_map',
+                 'sol_secp256k1_recover', 'sol_poseidon', 'sol_alt_bn128_group_op', 'sol_alt_bn128_compression')
 # log lines a program produces (the runtime's own invoke / consumed / success lines are not compared)
 PROGRAM_LINES = ('Program log: ', 'Program data: ', 'Program consumption: ', 'Program return: ')
 
@@ -122,7 +127,10 @@ def outcome(status, r0, cu, logs, accounts=None, err=None, limit=None):
     elif err:
         e = f'InstructionError(0, {err})'
     elif status.startswith('Sys'):
-        e = 'InstructionError(0, ComputationalBudgetExceeded)' if 'Budget' in status else 'InstructionError(0, ProgramFailedToComplete)'
+        # a syscall that fails with an InstructionError surfaces that error itself
+        e = ('InstructionError(0, ComputationalBudgetExceeded)' if 'Budget' in status else
+             f'InstructionError(0, {status[3:]})' if status[3:] in ('ArithmeticOverflow',) else
+             'InstructionError(0, ProgramFailedToComplete)')
     else:
         e = 'InstructionError(0, ProgramFailedToComplete)'
         cu = limit if limit is not None else cu
@@ -212,7 +220,8 @@ EXERCISER = os.path.join(ROOT, 'programs', 'exerciser', 'target', 'deploy', 'exe
 OUT_VM = 0x400000000 + 96                    # account 0's data, one account, no duplicates
 TAGS = {'memmove': 0, 'memcmp': 1, 'memcpy': 2, 'memset': 3, 'log': 4, 'log64': 5, 'logcu': 6, 'panic': 7,
         'sha256': 8, 'keccak': 9, 'logpubkey': 10, 'logdata': 11, 'setret': 12, 'getret': 13, 'height': 14,
-        'remaining': 15, 'abort': 16}
+        'remaining': 15, 'abort': 16, 'clock': 17, 'epoch_schedule': 18, 'rent': 19, 'epoch_rewards': 20,
+        'last_restart': 21, 'get_sysvar': 22, 'epoch_stake': 23, 'alloc': 24, 'sibling': 25}
 
 
 def gen_exerciser(rng):
@@ -224,6 +233,10 @@ def gen_exerciser(rng):
     for s in texts:
         data[pos:pos + len(s)] = s; spans.append((OUT_VM + pos, len(s))); pos += len(s) + 3
     data[300:332] = bytes(range(32)); data[340:400] = bytes(rng.getrandbits(8) for _ in range(60))
+    from .sref import SYSVARS
+    for j, nm in enumerate(['clock', 'slot_hashes', 'rent']):
+        data[400 + 32 * j:432 + 32 * j] = SYSVARS[nm]['id']
+    data[460:492] = SYSVARS[rng.choice(list(SYSVARS))]['id'] if rng.random() < 0.8 else bytes(32)
     nsl = rng.randint(0, 7)
     for i in range(nsl):                         # VmSlice descriptors: ptr, len
         p, n = rng.choice([(OUT_VM + 300, 32), (OUT_VM + 340, 60), (OUT_VM + 128, 5), (OUT_VM + 340, 0),
@@ -269,6 +282,18 @@ def gen_exerciser(rng):
             args = [rng.choice([OUT_VM + 300, OUT_VM + 128, addr()[0]]), rng.choice([0, 5, 32, 1024, 1025, 2000])]
         elif name == 'getret':
             args = [rng.choice([OUT_VM + 600, OUT_VM + 1020, addr()[0]]), rng.choice([0, 3, 32, 100]), rng.choice([OUT_VM + 700, OUT_VM + 1010, addr()[0]])]
+        elif name in ('clock', 'epoch_schedule', 'rent', 'epoch_rewards', 'last_restart'):
+            args = [rng.choice([0x300000000, 0x300000000 + rng.choice([4, 8, 16, 32760]), 0x200000000 + rng.choice([8, 4000]),
+                                OUT_VM + 512, 0x100000000, 0])]
+        elif name == 'get_sysvar':
+            args = [rng.choice([OUT_VM + 400, OUT_VM + 432, OUT_VM + 460]), rng.choice([0x300000000, 0x300000003, OUT_VM + 600, 0x100000000]),
+                    rng.choice([0, 1, 8, 16, 40, 20000, 2**64 - 1]), rng.choice([0, 1, 8, 17, 33, 40, 100, 20488])]
+        elif name == 'epoch_stake':
+            args = [rng.choice([0, OUT_VM + 300, OUT_VM + 1020, 0x500000000])]
+        elif name == 'alloc':
+            args = [rng.choice([0, 1, 7, 100, 4096, 32768, 40000, 2**63]), rng.choice([0, 0, 0, 0x300000000])]
+        elif name == 'sibling':
+            args = [rng.choice([0, 1, 5]), OUT_VM + 600, OUT_VM + 700, OUT_VM + 800, OUT_VM + 900]
         else:
             args = []
         args = (args + [0] * 5)[:5]

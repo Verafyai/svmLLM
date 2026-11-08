@@ -102,6 +102,28 @@ def keccak256(data):
     return b''.join(A[i % 5][i // 5].to_bytes(8, 'little') for i in range(4))
 
 
+import json as _json, os as _os
+SYSVARS = {k: {'id': bytes.fromhex(v['id']), 'data': bytes.fromhex(v['data'])} for k, v in
+           _json.load(open(_os.path.join(_os.path.dirname(__file__), 'sysvars.json'))).items()}
+
+
+def sysvar_struct(name):
+    """The in-memory (repr(Rust)) layout a get_*_sysvar syscall writes, from the bincode buffer."""
+    b = SYSVARS[name]['data']
+    if name == 'epoch_schedule':                     # u64, u64, bool (+7 padding), u64, u64
+        return b[:16] + b[16:17] + bytes(7) + b[17:33], 8
+    if name == 'rent':                               # u64, f64, u8 (+7 padding)
+        return b[:17] + bytes(7), 8
+    if name == 'epoch_rewards':                      # u64, u64, [32], (u128 at 48), u64, u64, bool, padding to 96
+        return b[:48] + b[48:64] + b[64:80] + b[80:81] + bytes(15), 16
+    return b, 8                                      # clock (5 x u64), last_restart_slot (u64)
+
+
+SYSVAR_CALLS = {'sol_get_clock_sysvar': 'clock', 'sol_get_epoch_schedule_sysvar': 'epoch_schedule',
+                'sol_get_rent_sysvar': 'rent', 'sol_get_epoch_rewards_sysvar': 'epoch_rewards',
+                'sol_get_last_restart_slot': 'last_restart_slot'}
+
+
 def syscall(name, r, mem, cu, limit, logs, rd):
     """Agave 4.3.2's syscalls (the ones Solana programs import most). Returns (cu, r0)."""
     a1, a2, a3, a4 = r[1], r[2], r[3], r[4]
@@ -205,6 +227,43 @@ def syscall(name, r, mem, cu, limit, logs, rd):
                     raise VMError('CopyOverlapping')        # translate_mut! refuses overlapping borrows
                 db[do:do + n] = data[:n]; pb[po:po + 32] = PROGRAM_ID if data else bytes(32)
             return cu, len(data)
+        elif name in SYSVAR_CALLS:
+            data, align = sysvar_struct(SYSVAR_CALLS[name])
+            consume(100 + len(data))
+            if a1 >= MM_INPUT:
+                raise VMError('InvalidPointer')      # syscall_parameter_address_restrictions
+            b, o = typ(a1, len(data), align, True)
+            b[o:o + len(data)] = data
+        elif name == 'sol_get_sysvar':
+            consume(100 + max(a4 // 250, 10))
+            if a2 >= MM_INPUT:
+                raise VMError('InvalidPointer')
+            sl(a2, a4, True)
+            ib, io = typ(a1, 32, 1)
+            sid = bytes(ib[io:io + 32])
+            if a3 + a4 >= 2**64 or a2 + a4 >= 2**64:
+                raise VMError('ArithmeticOverflow')
+            buf = next((v['data'] for v in SYSVARS.values() if v['id'] == sid), None)
+            if buf is None:
+                return cu, 2
+            if a3 + a4 > len(buf):
+                return cu, 1
+            b, o = sl(a2, a4, True)
+            if a4: b[o:o + a4] = buf[a3:a3 + a4]
+        elif name == 'sol_get_epoch_stake':
+            if a1 == 0:
+                consume(100); return cu, 0
+            consume(110); typ(a1, 32, 1); return cu, 0
+        elif name == 'sol_alloc_free_':
+            if a1 > 2**63 - 8 or a2 != 0:
+                return cu, 0
+            pos = rd.get('heap', 0); pos += (-pos) % 8
+            if pos + a1 > HEAP:
+                return cu, 0
+            rd['heap'] = pos + a1
+            return cu, MM_HEAP + pos
+        elif name == 'sol_get_processed_sibling_instruction':
+            consume(100); return cu, 0                 # one top-level instruction: no siblings
         elif name == 'sol_get_stack_height':
             consume(100); return cu, 1
         elif name == 'sol_remaining_compute_units':
