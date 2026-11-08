@@ -126,6 +126,7 @@ class Machine:
         self.svals = [onehot(i, max(1, len(self.snames))) for i in range(len(self.snames))]
         self.sys_gen = None
         self.rdata, self.rdlen = PagedRAM(32), word(0)
+        self.heap_pos = word(0)                          # the runtime's bump allocator position
         self.PROGRAM_ID = [word(b, 2) for b in (program_id or bytes(32))]
         # syscall microcode state: mode one-hot (log, memcpy, memset), byte counter, length,
         # source and destination physical addresses, fill byte, UTF-8 automaton state

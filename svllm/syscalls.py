@@ -17,7 +17,11 @@ from .machine import (NIB, onehot, LUT, AND, NOT, OR, gate, mux, ZN, word, unwor
 AL = 7
 SYS = ['abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove_', 'sol_memcmp_', 'sol_log_64_',
        'sol_log_compute_units_', 'sol_panic_', 'sol_sha256', 'sol_keccak256', 'sol_log_pubkey', 'sol_log_data',
-       'sol_set_return_data', 'sol_get_return_data', 'sol_get_stack_height']
+       'sol_set_return_data', 'sol_get_return_data', 'sol_get_stack_height', 'sol_get_clock_sysvar',
+       'sol_get_epoch_schedule_sysvar', 'sol_get_rent_sysvar', 'sol_get_epoch_rewards_sysvar', 'sol_get_last_restart_slot',
+       'sol_get_sysvar', 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction']
+MM_INPUT_W = word(4 << 32)
+HEAP_W = word(32 * 1024)
 HEXCH = LUT([16], [256], lambda n: ord('0123456789abcdef'[n]))
 DECCH = LUT([16], [256], lambda n: ord('0') + n if n < 10 else ord('?'))
 B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -25,6 +29,7 @@ B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 B64CH = LUT([4, 16], [256], lambda hi, lo: ord(B64[(hi << 4) | lo]))
 SPLIT = LUT([16], [4, 4], lambda n: (n >> 2, n & 3))           # nibble -> (top 2 bits, low 2 bits)
 JOIN = LUT([4, 4], [16], lambda hi, lo: (hi << 2) | lo)          # two 2-bit pieces -> nibble
+MOD8 = const(torch.eye(16)[[n & 7 for n in range(16)]])     # one-hot nibble -> one-hot (nibble & 7)
 ALIGN = {a: const([1.0 if i % a == 0 else 0.0 for i in range(16)]) for a in (1, 2, 4, 8)}
 
 
@@ -316,6 +321,71 @@ def program(m, name):
             for k in range(32):
                 x.wbyte(x.at(pp, k), m.PROGRAM_ID[k])
         return m.rdlen
+
+    from .sref import SYSVAR_CALLS, sysvar_struct, SYSVARS
+    if name in SYSVAR_CALLS:
+        data, align = sysvar_struct(SYSVAR_CALLS[name])          # runtime-supplied bytes
+        x.consume(word(100 + len(data)))
+        if not float(lt(R1, MM_INPUT_W)):
+            raise SysFail('InvalidPointer')
+        p = x.xlate(R1, word(len(data)), True, align=align)
+        for j, b in enumerate(data):
+            x.wbyte(x.at(p, j), word(b, 2))
+            if j % 8 == 7:
+                yield
+        return word(0)
+
+    if name == 'sol_get_sysvar':
+        x.consume(add(word(100), maxw(divmod_(R4, word(250))[0], word(10)), onehot(0, 2))[0])
+        if not float(lt(R2, MM_INPUT_W)):
+            raise SysFail('InvalidPointer')
+        x.xlate(R2, R4, True)
+        pid = x.xlate(R1, word(32), False)
+        sid = [x.rbyte(x.at(pid, j)) for j in range(32)]
+        end, c1 = add(R3, R4, onehot(0, 2))
+        _, c2 = add(R2, R4, onehot(0, 2))
+        if float(OR(c1[1], c2[1])):
+            raise SysFail('ArithmeticOverflow')
+        # exact-match attention over the sysvar cache: key = the 32-byte id, value = the buffer
+        hit = None
+        for v in SYSVARS.values():
+            if float(sum(eq(a, word(b, 2)) for a, b in zip(sid, v['id'])) == 32.0):
+                hit = v['data']
+        if hit is None:
+            return word(2)
+        if float(lt(word(len(hit)), end)):
+            return word(1)
+        p = x.xlate(R2, R4, True)
+        i = word(0)
+        while p is not None and not float(eq(i, R4)):
+            k = add(R3, i, onehot(0, 2))[0]
+            x.wbyte(x.at(p, i), word(hit[unword(k)], 2))       # the buffer is a constant table indexed by k
+            i = add(i, word(0), onehot(1, 2))[0]
+            yield
+        return word(0)
+
+    if name == 'sol_get_epoch_stake':
+        if float(is_zero(R1)):
+            x.consume(word(100)); return word(0)               # the runtime's epoch stake: 0 in this cluster
+        x.consume(word(110)); x.xlate(R1, word(32), False)
+        return word(0)
+
+    if name == 'sol_alloc_free_':
+        if float(OR(NOT(lt(R1, word(2**63 - 7))), NOT(is_zero(R2)))):
+            return word(0)
+        pos = m.heap_pos
+        pad = sub(word(0), pos)[0][:1]                           # (-pos) mod 8 from the low nibble
+        pad = zx(torch.stack([pad[0] @ MOD8]))
+        start = add(pos, pad, onehot(0, 2))[0]
+        end, c = add(start, R1, onehot(0, 2))
+        if float(OR(c[1], lt(HEAP_W, end))):
+            return word(0)
+        m.heap_pos = end
+        return add(word(3 << 32), start, onehot(0, 2))[0]
+
+    if name == 'sol_get_processed_sibling_instruction':
+        x.consume(word(100))
+        return word(0)                                          # one top-level instruction: no siblings
 
     raise SysFail('Unsupported:' + name)
 
