@@ -1,0 +1,77 @@
+{
+ "truth": "LiteSVM 0.18.2 (Agave 4.3.2 runtime, mainnet feature set)",
+ "loader": "Agave 4.3.2 ELF loader (truth/src/bin/elfimage.rs)",
+ "programs_built_with": "cargo-build-sbf 2.1.21, platform-tools v1.43",
+ "cases": 150,
+ "seed": 12,
+ "ref_vs_truth": "150/150",
+ "weights_vs_truth": "150/150",
+ "truth_outcomes": {
+  "ok": 33,
+  "InstructionError(0, ProgramFailedToComplete)": 14,
+  "InstructionError(0, Custom(101))": 10,
+  "InstructionError(0, Custom(1))": 43,
+  "InstructionError(0, Custom(2))": 2,
+  "InstructionError(0, Custom(5))": 24,
+  "InstructionError(0, Custom(100))": 8,
+  "InstructionError(0, Custom(6))": 10,
+  "InstructionError(0, Custom(4))": 5,
+  "InstructionError(0, Custom(3))": 1
+ },
+ "cases_with_logs": 0,
+ "per_program": {
+  "bond": {
+   "cases": 31,
+   "weights_match": 31,
+   "ok": 0,
+   "cu": 17123,
+   "steps": 112727,
+   "secs": 261.8
+  },
+  "escrow": {
+   "cases": 22,
+   "weights_match": 22,
+   "ok": 2,
+   "cu": 9866,
+   "steps": 65382,
+   "secs": 239.6
+  },
+  "graded_payout": {
+   "cases": 23,
+   "weights_match": 23,
+   "ok": 15,
+   "cu": 25389,
+   "steps": 100467,
+   "secs": 289.0
+  },
+  "ledger": {
+   "cases": 20,
+   "weights_match": 20,
+   "ok": 7,
+   "cu": 15847,
+   "steps": 77527,
+   "secs": 232.2
+  },
+  "milestone_escrow": {
+   "cases": 32,
+   "weights_match": 32,
+   "ok": 9,
+   "cu": 30653,
+   "steps": 142183,
+   "secs": 433.2
+  },
+  "ranked_split": {
+   "cases": 22,
+   "weights_match": 22,
+   "ok": 0,
+   "cu": 19318,
+   "steps": 104364,
+   "secs": 289.8
+  }
+ },
+ "total_cu": 118196,
+ "total_steps": 602650,
+ "cpu_seconds": 1745.6,
+ "wall_seconds": 876.8,
+ "failures": []
+}

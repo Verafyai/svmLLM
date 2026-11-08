@@ -1,0 +1,30 @@
+{
+ "truth": "LiteSVM 0.18.2 (Agave 4.3.2 runtime, mainnet feature set)",
+ "loader": "Agave 4.3.2 ELF loader (truth/src/bin/elfimage.rs)",
+ "programs_built_with": "cargo-build-sbf 2.1.21, platform-tools v1.43",
+ "cases": 400,
+ "seed": 101,
+ "ref_vs_truth": "400/400",
+ "weights_vs_truth": "400/400",
+ "truth_outcomes": {
+  "ok": 111,
+  "InstructionError(0, ProgramFailedToComplete)": 273,
+  "InstructionError(0, ComputationalBudgetExceeded)": 16
+ },
+ "cases_with_logs": 116,
+ "per_program": {
+  "exerciser": {
+   "cases": 400,
+   "weights_match": 400,
+   "ok": 111,
+   "cu": 7678966,
+   "steps": 63121,
+   "secs": 403.7
+  }
+ },
+ "total_cu": 7678966,
+ "total_steps": 63121,
+ "cpu_seconds": 403.7,
+ "wall_seconds": 202.0,
+ "failures": []
+}

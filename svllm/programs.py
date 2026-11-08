@@ -238,6 +238,21 @@ def conformance_cases():
         imm = {'lsh': 13, 'rsh': 63, 'arsh': 7, 'div': -3, 'mod': 1000}.get(op, -12345)
         if op != 'neg':
             add(f'alu/{op}/imm', f'lddw r2, {2**63 + 99991}\n{op}64 r2, {imm}\nmov64 r0, r2\nexit')
+    for op in ALU_OPS:                       # 32-bit forms (SBPF v0 extension rules)
+        for a, b in pairs[:4]:
+            if op in ('div', 'mod') and b & 0xffffffff == 0:
+                b = 3
+            if op == 'neg':
+                add(f'alu32/neg/{a:x}', f'lddw r2, {a}\nneg32 r2\nmov64 r0, r2\nexit')
+            else:
+                add(f'alu32/{op}/reg/{a:x}/{b:x}', f'lddw r2, {a}\nlddw r3, {b}\n{op}32 r2, r3\nmov64 r0, r2\nexit')
+        imm = {'lsh': 13, 'rsh': 31, 'arsh': 7, 'div': -3, 'mod': 1000}.get(op, -12345)
+        if op != 'neg':
+            add(f'alu32/{op}/imm', f'lddw r2, {2**63 + 0x8000a797}\n{op}32 r2, {imm}\nmov64 r0, r2\nexit')
+    for e in ('le', 'be'):
+        for w in (16, 32, 64):
+            add(f'end/{e}{w}', f'lddw r2, 0x8877665544332211\n{e}{w} r2\nmov64 r0, r2\nexit')
+    add('err/div32-0', 'lddw r2, 0x100000000\nmov64 r0, 5\ndiv32 r0, r2\nexit')
     for op in JMP_OPS:
         for a, b in [(5, 5), (2**63, 1), (1, 2**64 - 1)]:
             if op == 'ja':

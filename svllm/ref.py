@@ -10,11 +10,16 @@ before each instruction, like solana-sbpf's interpreter.
 from .isa import dec, OPCODES, MM_INPUT, MM_STACK_TOP, SIZE_BYTES
 
 M64 = 2**64 - 1
+M32 = 2**32 - 1
 WIN = 128
 
 
 def sx32(v):
     return v - (1 << 32) if v & 0x80000000 else v
+
+
+def sx64(v):                     # low 32 bits, sign-extended to 64
+    return sx32(v & M32) & M64
 
 
 def s64(v):
@@ -74,6 +79,28 @@ def run(prog, mem_in=b'', cu_limit=10000, trace=None, win=WIN):
                 elif name == 'neg': v = (-a) & M64
                 elif name == 'mov': v = b
                 r[d] = v
+            elif kind == 'alu32':
+                # SBPF v0: add/sub/mul sign-extend the 32-bit result; the rest zero-extend.
+                a = r[d] & M32; b = (r[s] if isreg else imm) & M32
+                if name == 'add': v = sx64(a + b)
+                elif name == 'sub': v = sx64(a - b)
+                elif name == 'mul': v = sx64(a * b)
+                elif name in ('div', 'mod'):
+                    if b == 0: raise VMError('DivideByZero')
+                    v = a // b if name == 'div' else a % b
+                elif name == 'or': v = a | b
+                elif name == 'and': v = a & b
+                elif name == 'xor': v = a ^ b
+                elif name == 'lsh': v = (a << (b & 31)) & M32
+                elif name == 'rsh': v = a >> (b & 31)
+                elif name == 'arsh': v = (sx32(a) >> (b & 31)) & M32
+                elif name == 'neg': v = (-a) & M32
+                elif name == 'mov': v = b
+                r[d] = v
+            elif kind == 'end':
+                if imm not in (16, 32, 64): raise VMError('InvalidInstruction')
+                nb = imm // 8; v = r[d] & ((1 << imm) - 1)
+                r[d] = int.from_bytes(v.to_bytes(nb, 'little'), 'big') if name == 'be' else v
             elif kind == 'jmp':
                 a = r[d]; b = r[s] if isreg else (imm & M64)
                 t = {'ja': True, 'jeq': a == b, 'jne': a != b, 'jgt': a > b, 'jge': a >= b,

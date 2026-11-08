@@ -1,0 +1,24 @@
+{
+ "cases": 600,
+ "cu_limit": 600,
+ "seed": 2026,
+ "ref_vs_anza": "600/600",
+ "weights_vs_anza": "600/600",
+ "statuses": {
+  "AccessViolation": 251,
+  "DivideByZero": 84,
+  "ExceededMaxInstructions": 40,
+  "ok": 80,
+  "InvalidInstruction": 53,
+  "CallDepthExceeded": 65,
+  "ExecutionOverrun": 8,
+  "CallOutsideTextSegment": 19
+ },
+ "with_calls": 446,
+ "gaps_on": 412,
+ "steps": 40845,
+ "cpu_seconds": 408.5,
+ "wall_seconds": 204.5,
+ "ms_per_step_one_thread": 10.0,
+ "failures": []
+}

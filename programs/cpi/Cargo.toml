@@ -1,0 +1,18 @@
+# CPI exerciser: performs one cross-program invocation described by its instruction data.
+
+[package]
+name = "cpi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+overflow-checks = false
+codegen-units = 1
+lto = true
+panic = "abort"
+
+[workspace]

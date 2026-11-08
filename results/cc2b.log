@@ -1,0 +1,14 @@
+ bn c2 0 0 0s
+ bn c3 128 0 104s
+ bn c3 0 0 207s
+ bn 6 128 0 550s
+ bn 4 0 0 564s
+ bn c1 128 1 564s
+bn ok 564.0499441623688
+ bls add 6 1 1s
+ bls sub 134 1 2s
+ bls decompress 5 0 222s
+ bls validate 133 0 222s
+ bls mul 133 1 222s
+ bls decompress 133 0 439s
+bls ok 438.6776008605957

@@ -1,0 +1,5 @@
+{"pairings_in_weights": true, "cpi_in_weights": true,
+ "cpi_cases": "2,500 (16 on the weights)", "cpi_weights": "16/16, CPI checks as circuits",
+ "curve_cases": "2,000 (24 + the pairing cards on the weights)", "curve_weights": "24/24 pairings excluded; both pairings match on their own runs",
+ "bn_pairing_time": "about 9 min (16 min inside a whole program, with other jobs running)", "bls_pairing_time": "about 36 min (two pairs)",
+ "f12_time": "about 0.5 s / 1.9 s"}

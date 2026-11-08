@@ -1,0 +1,2 @@
+runtime + weights vs litesvm 16 / 16
+[('InstructionError(0, ProgramFailedToComplete)', 5), ('InstructionError(0, PrivilegeEscalation)', 4), ('ok', 2), ('InstructionError(0, UnbalancedInstruction)', 2), ('InstructionError(0, InvalidInstructionData)', 1), ('InstructionError(0, ComputationalBudgetExceeded)', 1), ('InstructionError(0, ExternalAccountLamportSpend)', 1)]
