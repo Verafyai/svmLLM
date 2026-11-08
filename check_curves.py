@@ -337,6 +337,8 @@ if __name__ == '__main__':
     n, seed = int(sys.argv[1]), int(sys.argv[2])
     families = sys.argv[3].split(',') if len(sys.argv) > 3 else ['c25519', 'secp']
     weights = len(sys.argv) > 4 and sys.argv[4] == 'weights'
+    if weights:
+        import torch; torch.set_num_threads(1)
     rng = random.Random(seed)
     cases = []
     for _ in range(n):

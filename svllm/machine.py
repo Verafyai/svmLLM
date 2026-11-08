@@ -64,9 +64,35 @@ class LUT:
                 W2[oofs[g] + v, h] = 1.0
         self.W1, self.W2 = const(W1), const(W2)
         self.b1 = const(torch.full((H,), -(len(ins) - 1.0)))
-        self.outs = outs
+        self.outs, self.ins = outs, ins
+        self.table = self.W2.T.contiguous()                 # row h = the output for combination h
+        self.radix = [int(torch.tensor(ins[g + 1:]).prod()) if g + 1 < len(ins) else 1 for g in range(len(ins))]
+
+    indexed = False     # see __call__
+
+    def ix(self, *idx):
+        """The same table on index form: inputs are integer tensors (the positions of the ones in
+        one-hot inputs), outputs likewise. Each output is read from W2 (row h's argmax per group), so
+        this is the layer's own weights evaluated at a one-hot input, without the zero terms."""
+        if not hasattr(self, '_tix'):
+            cols = torch.split(self.table, self.outs, dim=-1)
+            self._tix = [c.argmax(-1) for c in cols]
+        h = sum(i * r for i, r in zip(idx, self.radix))
+        out = [t[h] for t in self._tix]
+        return tuple(out) if len(out) > 1 else out[0]
 
     def __call__(self, *xs):
+        if LUT.indexed and len(xs) == len(self.ins):
+            # Indexed evaluation. With every input group exactly one-hot, the first layer's
+            # pre-activation is 1 on the one hidden unit whose combination matches and <= 0 on all
+            # others, so relu(.) is that unit's one-hot and the output is row h of W2^T. Reading
+            # row h directly is the same arithmetic minus the zero terms (the PagedRAM argument).
+            # Inputs that are not exactly one-hot fall back to the dense layer.
+            ok = all(bool(((x == 0) | (x == 1)).all()) and bool((x.sum(-1) == 1).all()) for x in xs)
+            if ok:
+                h = sum(x.argmax(-1) * r for x, r in zip(xs, self.radix))
+                y = self.table[h]
+                return torch.split(y, self.outs, dim=-1) if len(self.outs) > 1 else y
         x = torch.cat(xs, dim=-1)
         y = relu(x @ self.W1.T + self.b1) @ self.W2.T
         return torch.split(y, self.outs, dim=-1) if len(self.outs) > 1 else y

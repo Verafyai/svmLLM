@@ -20,7 +20,11 @@ SYS = ['abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove_', 'sol_m
        'sol_set_return_data', 'sol_get_return_data', 'sol_get_stack_height', 'sol_get_clock_sysvar',
        'sol_get_epoch_schedule_sysvar', 'sol_get_rent_sysvar', 'sol_get_epoch_rewards_sysvar', 'sol_get_last_restart_slot',
        'sol_get_sysvar', 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction',
-       'sol_create_program_address', 'sol_try_find_program_address', 'sol_invoke_signed_c', 'sol_invoke_signed_rust']
+       'sol_create_program_address', 'sol_try_find_program_address', 'sol_invoke_signed_c', 'sol_invoke_signed_rust',
+       'sol_curve_validate_point', 'sol_curve_group_op', 'sol_curve_multiscalar_mul', 'sol_secp256k1_recover',
+       'sol_alt_bn128_group_op', 'sol_alt_bn128_compression', 'sol_poseidon', 'sol_curve_decompress']
+# sol_curve_pairing_map and the alt_bn128 pairing op run their cost and translation steps here and
+# then stop with SysFail('Unsupported:pairing'): the pairing arithmetic is in the reference only.
 PDA_MARKER = b'ProgramDerivedAddress'
 MM_INPUT_W = word(4 << 32)
 HEAP_W = word(32 * 1024)
@@ -476,7 +480,177 @@ def program(m, name):
         import_rd(m)
         return word(0)
 
+    if name in CURVE_W:
+        r = yield from curve_program(x, name, R1, R2, R3, R4, R5)
+        return r
+
     raise SysFail('Unsupported:' + name)
+
+
+CURVE_W = ('sol_curve_validate_point', 'sol_curve_group_op', 'sol_curve_multiscalar_mul', 'sol_secp256k1_recover',
+           'sol_alt_bn128_group_op', 'sol_alt_bn128_compression', 'sol_poseidon', 'sol_curve_decompress',
+           'sol_curve_pairing_map')
+BN_OPS_W = {0: (334, 64), 4: (535, 128), 2: (3840, 64), 6: (15670, 128), 3: (None, 32)}
+BN_COMP_W = {0: (130, 32), 1: (498, 64), 2: (186, 64), 3: (13710, 128)}
+C25519_COST_W = {(0, 'v'): 159, (0, 0): 473, (0, 1): 475, (0, 2): 2177, (0, 'msm'): (2273, 758),
+                 (1, 'v'): 169, (1, 0): 521, (1, 1): 519, (1, 2): 2208, (1, 'msm'): (2303, 788)}
+
+
+def curve_program(x, name, R1, R2, R3, R4, R5):
+    """Curve syscalls: Agave's order (cost, input translation, compute, result translation on
+    success). The arithmetic is ccurves.py's circuits."""
+    from . import ccurves as Q
+    isv = lambda R, k: bool(float(eq(R, word(k))))
+    which = lambda R, ks: next((k for k in ks if isv(R, k)), None)
+
+    def rd(addr, n):
+        p = x.xlate(addr, word(n), False)
+        return [x.rbyte(x.at(p, j)) for j in range(n)]
+
+    def wr(addr, bs):
+        p = x.xlate(addr, word(len(bs)), True)
+        for j, b in enumerate(bs):
+            x.wbyte(x.at(p, j), b)
+
+    if name in ('sol_alt_bn128_group_op', 'sol_alt_bn128_compression'):
+        table = BN_OPS_W if name == 'sol_alt_bn128_group_op' else BN_COMP_W
+        op = unword(R1)
+        if op & ~0x80 not in table:
+            raise SysFail('InvalidAttribute')
+        cost, size = table[op & ~0x80]
+        n = unword(R3)
+        if cost is None:
+            cost = min(36364 + 12121 * max(n // 192 - 1, 0) + 85 + n + 32, 2**64 - 1)
+        x.consume(word(cost))
+        x.xlate(R4, word(size), True)
+        p = x.xlate(R2, R3, False)
+        inp = [x.rbyte(x.at(p, j)) for j in range(n)] if p is not None else []
+        yield
+        if name == 'sol_alt_bn128_group_op' and op & 0x7f == 3:
+            raise SysFail('Unsupported:pairing')
+        code, out = (Q.bn_group_op if name == 'sol_alt_bn128_group_op' else Q.bn_compression)(op, inp)
+        yield
+        if code:
+            return word(1)
+        wr(R4, out)
+        return word(0)
+    if name == 'sol_poseidon':
+        if not isv(R1, 0) or which(R2, (0, 1)) is None:
+            raise SysFail('PoseidonError')
+        if float(lt(word(12), R4)):
+            raise SysFail('InvalidLength')
+        n = unword(R4)
+        x.consume(word(61 * n * n + 542))
+        x.xlate(R5, word(32), True)
+        vals = []
+        if n:
+            dp = x.xlate(R3, word(16 * n), False, align=8)
+            descs = [(x.rword(x.at(dp, 16 * i)), x.rword(x.at(dp, 16 * i + 8))) for i in range(n)]
+            for ptr, ln in descs:
+                q = x.xlate(ptr, ln, False)
+                vals.append([x.rbyte(x.at(q, j)) for j in range(unword(ln))] if q is not None else [])
+        yield
+        code, out = Q.poseidon_hashv(unword(R2), vals)
+        yield
+        if code:
+            return word(1)
+        wr(R5, out)
+        return word(0)
+    bls = which(R1, (5, 6, 0x85, 0x86, 4, 0x84))
+    bk = None if bls is None else bls & 0x7f
+    if name == 'sol_curve_validate_point' and bk in (5, 6):
+        n = 96 if bk == 5 else 192
+        x.consume(word(1565 if bk == 5 else 1968))
+        pt = rd(R2, n)
+        yield
+        return word(Q.bls_syscall('validate', bls, [pt])[0])
+    if name == 'sol_curve_group_op' and bk in (5, 6):
+        op = which(R2, (0, 1, 2))
+        if op is None:
+            raise SysFail('InvalidAttribute')
+        n = 96 if bk == 5 else 192
+        x.consume(word({(5, 0): 128, (5, 1): 129, (5, 2): 4627, (6, 0): 203, (6, 1): 204, (6, 2): 8255}[(bk, op)]))
+        left, right = rd(R3, 32 if op == 2 else n), rd(R4, n)
+        yield
+        code, out = Q.bls_syscall({0: 'add', 1: 'sub', 2: 'mul'}[op], bls, [left, right])
+        yield
+        if code:
+            return word(1)
+        wr(R5, out)
+        return word(0)
+    if name == 'sol_curve_decompress':
+        if bk not in (5, 6):
+            raise SysFail('InvalidAttribute')
+        n = 48 if bk == 5 else 96
+        x.consume(word(2100 if bk == 5 else 3050))
+        inp = rd(R2, n)
+        yield
+        code, out = Q.bls_syscall('decompress', bls, [inp])
+        if code:
+            return word(1)
+        wr(R3, out)
+        return word(0)
+    if name == 'sol_curve_pairing_map':
+        if bk != 4:
+            raise SysFail('InvalidAttribute')
+        n = unword(R2)
+        x.consume(word(min(25445 + 13023 * max(n - 1, 0), 2**64 - 1)))
+        if n * 96 >= 2**63:
+            raise SysFail('InvalidLength')
+        x.xlate(R3, word(96 * n), False); x.xlate(R4, word(192 * n), False)
+        raise SysFail('Unsupported:pairing')
+    if name == 'sol_secp256k1_recover':
+        x.consume(word(25000))
+        x.xlate(R4, word(64), True)
+        h, sig = rd(R1, 32), rd(R3, 64)
+        yield
+        recid = unword(R2)                     # compared only against 4 and 256 (two borrow circuits)
+        code, pub = Q.secp256k1_recover(h, recid, sig)
+        yield
+        if code:
+            return word(code)
+        wr(R4, pub)
+        return word(0)
+    cid = which(R1, (0, 1))
+    if name == 'sol_curve_validate_point':
+        if cid is None:
+            raise SysFail('InvalidAttribute')
+        x.consume(word(C25519_COST_W[(cid, 'v')]))
+        pt = rd(R2, 32)
+        yield
+        return word(0 if Q.c25519_validate(cid, pt) else 1)
+    if name == 'sol_curve_group_op':
+        op = which(R2, (0, 1, 2))
+        if cid is None or op is None:
+            raise SysFail('InvalidAttribute')
+        x.consume(word(C25519_COST_W[(cid, op)]))
+        left, right = rd(R3, 32), rd(R4, 32)
+        yield
+        out = Q.c25519_group(cid, op, left, right)
+        yield
+        if out is None:
+            return word(1)
+        wr(R5, out)
+        return word(0)
+    # sol_curve_multiscalar_mul(curve, scalars, points, n, result)
+    if float(lt(word(512), R4)):
+        raise SysFail('InvalidLength')
+    if cid is None:
+        raise SysFail('InvalidAttribute')
+    base, inc = C25519_COST_W[(cid, 'msm')]
+    n = unword(R4)
+    x.consume(word(base + inc * max(n - 1, 0)))
+    sp = x.xlate(R2, word(32 * n), False)
+    pp = x.xlate(R3, word(32 * n), False)
+    ss = [[x.rbyte(x.at(sp, 32 * i + j)) for j in range(32)] for i in range(n)]
+    ps = [[x.rbyte(x.at(pp, 32 * i + j)) for j in range(32)] for i in range(n)]
+    yield
+    out = Q.c25519_msm(cid, ss, ps)
+    yield
+    if out is None:
+        return word(1)
+    wr(R5, out)
+    return word(0)
 
 
 class CircuitPort:
