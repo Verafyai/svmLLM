@@ -27,9 +27,9 @@ Pass counts are all measured on this machine (2 CPU cores, no GPU).
 | VM: random programs with calls, gaps, every fault (seed 2026) | 600 | 600/600 (Anza) | 600/600 |
 | Real compiled programs (TinySVM's six, seed 12) | 150 | 150/150 | 150/150 |
 | Syscall exerciser, 29 non-curve syscalls (seed 101) | 400 | 400/400 | 400/400 |
-| CPI, C and Rust ABIs, System Program, rent (seeds 21, 33) | 2,500 | 2,500/2,500 | see below |
+| CPI, C and Rust ABIs, System Program, rent (seeds 21, 33; weights seed 7) | 2,500 (16 on the weights) | 2,500/2,500 | 16/16 |
 | Curve syscalls, all families incl. pairings (seed 11) | 2,000 | 2,000/2,000 | see below |
-| Curve syscalls in the weights, pairings left out (seed 41) | 24 | 24/24 | RESULT_PENDING |
+| Curve syscalls in the weights, pairings left out (seed 41) | 24 | 24/24 | 24/24 |
 
 Per family, reference vs LiteSVM: Ed25519 / Ristretto / secp256k1 1,500/1,500; BN254 800/800
 (every op, both endiannesses, both return codes seen); Poseidon 400/400; BLS12-381 500/500.
