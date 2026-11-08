@@ -79,23 +79,29 @@ def pad(A, L):
 
 
 def mul(A, B):
-    La, Lb = A.shape[0], B.shape[0]
+    """A [..., La] x B [..., Lb] -> exact products [..., La + Lb] (any matching leading dims)."""
+    La, Lb = A.shape[-1], B.shape[-1]
+    shp = A.shape[:-1]
     W = La + Lb
-    lo, hi = L_MULN.ix(A[:, None].expand(La, Lb), B[None].expand(La, Lb), zeros(La, Lb))
-    rows = zeros(2 * La, W)
+    lo, hi = L_MULN.ix(A[..., :, None].expand(*shp, La, Lb), B[..., None, :].expand(*shp, La, Lb),
+                       zeros(*shp, La, Lb))
+    rows = zeros(*shp, 2 * La, W)
     for i in range(La):                              # fixed wiring: row i shifted by i limbs
-        rows[2 * i, i:i + Lb] = lo[i]
-        rows[2 * i + 1, i + 1:i + 1 + Lb] = hi[i]
-    while rows.shape[0] > 1:
-        if rows.shape[0] % 2:
-            rows = torch.cat([rows, zeros(1, W)])
-        rows, _ = add(rows[0::2], rows[1::2])
-    return rows[0]
+        rows[..., 2 * i, i:i + Lb] = lo[..., i, :]
+        rows[..., 2 * i + 1, i + 1:i + 1 + Lb] = hi[..., i, :]
+    while rows.shape[-2] > 1:
+        if rows.shape[-2] % 2:
+            rows = torch.cat([rows, zeros(*shp, 1, W)], -2)
+        rows, _ = add(rows[..., 0::2, :], rows[..., 1::2, :])
+    return rows[..., 0, :]
 
 
 def select(bit, A, B):
-    """bit ? A : B, limb by limb through the SEL2 table."""
-    b = torch.full(A.shape, int(bit), dtype=I)
+    """bit ? A : B, limb by limb through the SEL2 table. bit: an int or a tensor over A's leading dims."""
+    if isinstance(bit, torch.Tensor):
+        b = bit.to(I).unsqueeze(-1).expand(A.shape)
+    else:
+        b = torch.full(A.shape, int(bit), dtype=I)
     return SEL2.ix(b, A, B)
 
 
@@ -124,14 +130,33 @@ class Field:
         return num(v % self.m_int, self.k)
 
     def reduce(self, X):
+        """X < m^2 -> X mod m; X may carry leading batch dims."""
         k = self.k
         X = pad(X, 2 * k)
-        q3 = mul(X[k - 1:], self.mu)[k + 1:2 * k + 2]
-        r, _ = sub(X[:k + 1], mul(q3, self.mk1)[:k + 1])
+        shp = X.shape[:-1]
+        q3 = mul(X[..., k - 1:], self.mu.expand(*shp, k + 1))[..., k + 1:2 * k + 2]
+        r, _ = sub(X[..., :k + 1], mul(q3, self.mk1.expand(*shp, k + 1))[..., :k + 1])
         for _ in range(2):
-            D, borrow = sub(r, self.mk1)
+            D, borrow = sub(r, self.mk1.expand(*shp, k + 1))
             r = select(borrow, r, D)
-        return r[:k]
+        return r[..., :k]
+
+    def reduce_wide(self, X):
+        """Any X < 16^L (L = X's limb count) -> X mod m. Barrett with mu_L = 16^L // m: the quotient
+        estimate floor(floor(X / 16^(k-1)) mu_L / 16^(L-k+1)) is at most 2 below the true one."""
+        k, L = self.k, X.shape[-1]
+        shp = X.shape[:-1]
+        if not hasattr(self, '_mu'):
+            self._mu = {}
+        if L not in self._mu:
+            self._mu[L] = num(16 ** L // self.m_int, L - k + 2)
+        mu = self._mu[L]
+        q3 = mul(X[..., k - 1:], mu.expand(*shp, mu.shape[0]))[..., L - k + 1:2 * (L - k + 1) + 1]
+        r, _ = sub(X[..., :k + 1], mul(q3, self.mk1.expand(*shp, k + 1))[..., :k + 1])
+        for _ in range(3):
+            D, borrow = sub(r, self.mk1.expand(*shp, k + 1))
+            r = select(borrow, r, D)
+        return r[..., :k]
 
     def mul(self, A, B):
         return self.reduce(mul(A, B))
@@ -141,12 +166,12 @@ class Field:
 
     def add(self, A, B):
         s, _ = add(pad(A, self.k + 1), pad(B, self.k + 1))
-        D, borrow = sub(s, self.mk1)
-        return select(borrow, s, D)[:self.k]
+        D, borrow = sub(s, self.mk1.expand(s.shape))
+        return select(borrow, s, D)[..., :self.k]
 
     def sub(self, A, B):
         D, borrow = sub(A, B)
-        Dp, _ = add(D, self.m)
+        Dp, _ = add(D, self.m.expand(D.shape))
         return select(borrow, Dp, D)
 
     def neg(self, A):

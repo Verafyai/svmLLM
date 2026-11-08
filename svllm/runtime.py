@@ -127,6 +127,14 @@ class Tx:
                 raise IxError('UnbalancedInstruction')
         if len(self.stack) >= MAX_DEPTH:
             raise IxError('CallDepth')
+        def post():
+            if self.delta() != 0:
+                raise IxError('UnbalancedInstruction')
+        self.execute(frame, post)
+
+    def execute(self, frame, post):
+        """Push the frame, run the program (builtin or BPF), run the post-check, pop. The checks
+        before it are the caller's: process() above, or the CPI syscall's circuits (cpi_w.py)."""
         self.stack.append(frame)
         try:
             self.rdd['pid'], self.rdd['data'] = frame.program, b''
@@ -139,8 +147,7 @@ class Tx:
                 self.run_bpf(frame)
             else:
                 raise IxError('UnsupportedProgramId')
-            if self.delta() != 0:
-                raise IxError('UnbalancedInstruction')
+            post()
         finally:
             self.stack.pop()
 

@@ -22,9 +22,8 @@ SYS = ['abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove_', 'sol_m
        'sol_get_sysvar', 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction',
        'sol_create_program_address', 'sol_try_find_program_address', 'sol_invoke_signed_c', 'sol_invoke_signed_rust',
        'sol_curve_validate_point', 'sol_curve_group_op', 'sol_curve_multiscalar_mul', 'sol_secp256k1_recover',
-       'sol_alt_bn128_group_op', 'sol_alt_bn128_compression', 'sol_poseidon', 'sol_curve_decompress']
-# sol_curve_pairing_map and the alt_bn128 pairing op run their cost and translation steps here and
-# then stop with SysFail('Unsupported:pairing'): the pairing arithmetic is in the reference only.
+       'sol_alt_bn128_group_op', 'sol_alt_bn128_compression', 'sol_poseidon', 'sol_curve_decompress',
+       'sol_curve_pairing_map']
 PDA_MARKER = b'ProgramDerivedAddress'
 MM_INPUT_W = word(4 << 32)
 HEAP_W = word(32 * 1024)
@@ -464,11 +463,11 @@ def program(m, name):
         from .sref import VMError
         tx = m.ctx['tx']
         export_rd(m)
-        regs_i = [0] + [unword(v) for v in (R1, R2, R3, R4, R5)]
         cu0 = unword(m.cu)
         base = tx.cu + cu0
         try:
-            cu1, _ = _invoke_c(m.ctx, regs_i, CircuitPort(x), cu0, unword(m.limit), 'c' if name.endswith('_c') else 'rust')
+            from . import cpi_w
+            cu1 = yield from cpi_w.invoke(x, [None, R1, R2, R3, R4, R5], 'c' if name.endswith('_c') else 'rust')
         except (VMError, IxError) as e:
             m.cu = word(cu0 + (tx.cu - base), m.cu.shape[0])
             tx.cu = base - cu0
@@ -526,8 +525,6 @@ def curve_program(x, name, R1, R2, R3, R4, R5):
         p = x.xlate(R2, R3, False)
         inp = [x.rbyte(x.at(p, j)) for j in range(n)] if p is not None else []
         yield
-        if name == 'sol_alt_bn128_group_op' and op & 0x7f == 3:
-            raise SysFail('Unsupported:pairing')
         code, out = (Q.bn_group_op if name == 'sol_alt_bn128_group_op' else Q.bn_compression)(op, inp)
         yield
         if code:
@@ -597,8 +594,16 @@ def curve_program(x, name, R1, R2, R3, R4, R5):
         x.consume(word(min(25445 + 13023 * max(n - 1, 0), 2**64 - 1)))
         if n * 96 >= 2**63:
             raise SysFail('InvalidLength')
-        x.xlate(R3, word(96 * n), False); x.xlate(R4, word(192 * n), False)
-        raise SysFail('Unsupported:pairing')
+        gp, hp = x.xlate(R3, word(96 * n), False), x.xlate(R4, word(192 * n), False)
+        g1s = [[x.rbyte(x.at(gp, 96 * i + j)) for j in range(96)] for i in range(n)]
+        g2s = [[x.rbyte(x.at(hp, 192 * i + j)) for j in range(192)] for i in range(n)]
+        yield
+        code, out = Q.bls_syscall('pairing', bls, [g1s, g2s])
+        yield
+        if code:
+            return word(1)
+        wr(R5, out)
+        return word(0)
     if name == 'sol_secp256k1_recover':
         x.consume(word(25000))
         x.xlate(R4, word(64), True)

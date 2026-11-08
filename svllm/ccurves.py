@@ -533,9 +533,22 @@ def bn_group_op(op, inp):
             k = limbs_of(inp[128:], big=not le)
             r = bn_out(BN2.mul(k, P, 256), True)
             return 0, r if le else be_le(r, 64)
+        if o == 3:
+            if len(inp) % 192:
+                raise Fail()
+            pairs = []
+            for i in range(0, len(inp), 192):
+                c = inp[i:i + 192]
+                P = bn_parse(c[:64] if le else be_le(c[:64], 32), False, True)
+                Qp = bn_parse(c[64:] if le else be_le(c[64:], 64), True, True)
+                pairs.append((P, Qp))
+            from . import cpairing
+            v = 1 if cpairing.bn_pairing_is_one(pairs) else 0
+            out = bytes_of(F.num(v, 64), 32)
+            return 0, out if le else list(reversed(out))
     except Fail:
         return 1, None
-    raise NotImplementedError('alt_bn128 pairing is not in the weights')
+    raise ValueError(op)
 
 
 def bn_compression(op, inp):
@@ -723,6 +736,15 @@ def bls_syscall(kind, cid, args):
             return 0, cv(bls_out(W.mul(k, P, 255), g2), g2)
         if kind == 'decompress':
             return 0, cv(bls_out(bls_compressed(cv(args[0], g2), g2), g2), g2)
+        if kind == 'pairing':
+            g1s, g2s = args
+            if len(g1s) > 8:
+                raise Fail()
+            pairs = [(bls_uncompressed(cv(a, False), False, True), bls_uncompressed(cv(c, True), True, True))
+                     for a, c in zip(g1s, g2s)]
+            from . import cpairing
+            out = cpairing.bls_gt_bytes(pairs)
+            return 0, out if le else list(reversed(out))
     except Fail:
         return 1, None
-    raise NotImplementedError('BLS12-381 pairing is not in the weights')
+    raise ValueError(kind)
