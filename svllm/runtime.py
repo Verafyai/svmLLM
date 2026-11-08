@@ -264,11 +264,11 @@ class Tx:
 
 
 # ------------------------------------------------------------------ the CPI syscall (C ABI)
-def invoke_c(ctx, r, mem, cu, limit):
+def invoke_c(ctx, r, mem, cu, limit, abi='c'):
     tx = ctx['tx']
     base = tx.cu + cu
     try:
-        return _invoke_c(ctx, r, mem, cu, limit)
+        return _invoke_c(ctx, r, mem, cu, limit, abi)
     except (VMError, IxError) as e:
         e.cu_local = cu + (tx.cu - base)
         tx.cu = base - cu
@@ -297,7 +297,7 @@ class RefPort:
         b[o:o + len(data)] = data
 
 
-def _invoke_c(ctx, r, port, cu, limit):
+def _invoke_c(ctx, r, port, cu, limit, abi='c'):
     """sol_invoke_signed_c, following cpi_common / translate_*_c / update_*_account in Agave 4.3.2."""
     if not hasattr(port, 'read'):
         port = RefPort(port)
@@ -316,9 +316,15 @@ def _invoke_c(ctx, r, port, cu, limit):
 
     a1, a2, a3, a4, a5 = r[1], r[2], r[3], r[4], r[5]
     tx.consume(INVOKE_UNITS)
-    pid_addr, accs_addr, accs_len, data_addr, data_len = struct.unpack('<5Q', port.read(a1, 40, 8))
-    program_id = key(pid_addr)
-    mb = sl(accs_addr, accs_len, 16, 8)
+    if abi == 'c':
+        pid_addr, accs_addr, accs_len, data_addr, data_len = struct.unpack('<5Q', port.read(a1, 40, 8))
+        program_id = key(pid_addr)
+        mb = sl(accs_addr, accs_len, 16, 8)
+    else:                                   # StableInstruction: accounts {addr, cap, len}, data {addr, cap, len}, id
+        raw = port.read(a1, 80, 8)
+        accs_addr, _, accs_len, data_addr, _, data_len = struct.unpack_from('<6Q', raw)
+        program_id = raw[48:80]
+        mb = sl(accs_addr, accs_len, 34, 1)
     data = sl(data_addr, data_len, 1, 1)
     if accs_len > 255:
         raise VMError('MaxInstructionAccountsExceeded')
@@ -327,11 +333,14 @@ def _invoke_c(ctx, r, port, cu, limit):
     tx.consume(min(data_len // CPI_BPU + (accs_len * 34) // CPI_BPU, M64))
     metas = []
     for i in range(accs_len):
-        pk_addr = struct.unpack_from('<Q', mb, 16 * i)[0]
-        w, s = mb[16 * i + 8], mb[16 * i + 9]
+        if abi == 'c':
+            pk_addr = struct.unpack_from('<Q', mb, 16 * i)[0]
+            w, s = mb[16 * i + 8], mb[16 * i + 9]
+        else:
+            s, w = mb[34 * i + 32], mb[34 * i + 33]
         if s > 1 or w > 1:
             raise IxError('InvalidArgument')
-        metas.append((key(pk_addr), bool(s), bool(w)))
+        metas.append((key(pk_addr) if abi == 'c' else mb[34 * i:34 * i + 32], bool(s), bool(w)))
     signers = []
     if a5:
         sb = sl(a4, a5, 16, 8)
@@ -363,13 +372,14 @@ def _invoke_c(ctx, r, port, cu, limit):
             raise IxError('PrivilegeEscalation')
     if program_id not in caller_flags:
         raise IxError('MissingAccount')
-    if a2 + a3 * 56 >= MM_INPUT:
+    isz = 56 if abi == 'c' else 48
+    if a2 + a3 * isz >= MM_INPUT:
         raise VMError('InvalidPointer')
-    ib = sl(a2, a3, 56, 8)
+    ib = sl(a2, a3, isz, 8)
     if a3 > 255:
         raise VMError('MaxInstructionAccountInfosExceeded')
     tx.consume((a3 * 80) // CPI_BPU)
-    info_keys = [key(struct.unpack_from('<Q', ib, 56 * i)[0]) for i in range(a3)]
+    info_keys = [key(struct.unpack_from('<Q', ib, isz * i)[0]) for i in range(a3)]
     caller_index = {k: i for i, (k, _, _) in reversed(list(enumerate(frame.accounts)))}
     translated = []
     for i, (k, s, w) in enumerate(callee.accounts):
@@ -383,12 +393,29 @@ def _invoke_c(ctx, r, port, cu, limit):
             raise IxError('MissingAccount')
         j = info_keys.index(k)
         m = meta[caller_index[k]]
-        f = struct.unpack_from('<6Q', ib, 56 * j)
-        key_addr, lam_addr, dlen, data_addr, owner_addr = f[0], f[1], f[2], f[3], f[4]
-        if (key_addr, owner_addr, lam_addr, data_addr) != (m['vm_key'], m['vm_owner'], m['vm_lamports'], m['vm_data']):
-            raise VMError('InvalidPointer')
-        port.read(lam_addr, 8, 8, True); port.read(owner_addr, 32, 1, True)
-        len_addr = a2 + 56 * j + 16
+        if abi == 'c':
+            f = struct.unpack_from('<6Q', ib, 56 * j)
+            key_addr, lam_addr, dlen, data_addr, owner_addr = f[0], f[1], f[2], f[3], f[4]
+            if (key_addr, owner_addr, lam_addr, data_addr) != (m['vm_key'], m['vm_owner'], m['vm_lamports'], m['vm_data']):
+                raise VMError('InvalidPointer')
+            port.read(lam_addr, 8, 8, True); port.read(owner_addr, 32, 1, True)
+            len_addr = a2 + 56 * j + 16
+        else:                               # CallerAccount::from_account_info, in its order
+            key_addr, rc_lam, rc_dat, owner_addr = struct.unpack_from('<4Q', ib, 48 * j)
+            if key_addr != m['vm_key'] or owner_addr != m['vm_owner']:
+                raise VMError('InvalidPointer')
+            cell = (rc_lam + 24) & M64
+            lam_addr = q(cell)
+            if cell >= MM_INPUT or lam_addr != m['vm_lamports']:
+                raise VMError('InvalidPointer')
+            port.read(lam_addr, 8, 8, True); port.read(owner_addr, 32, 1, True)
+            dcell = (rc_dat + 24) & M64
+            if dcell >= MM_INPUT:
+                raise VMError('InvalidPointer')
+            data_addr = q(dcell)
+            if data_addr != m['vm_data']:
+                raise VMError('InvalidPointer')
+            len_addr = (dcell + 8) & M64
         if len_addr >= MM_INPUT:
             raise VMError('InvalidPointer')
         ref_len = struct.unpack('<Q', port.read(len_addr, 8, 1, True))[0]

@@ -20,7 +20,7 @@ SYS = ['abort', 'sol_log_', 'sol_memcpy_', 'sol_memset_', 'sol_memmove_', 'sol_m
        'sol_set_return_data', 'sol_get_return_data', 'sol_get_stack_height', 'sol_get_clock_sysvar',
        'sol_get_epoch_schedule_sysvar', 'sol_get_rent_sysvar', 'sol_get_epoch_rewards_sysvar', 'sol_get_last_restart_slot',
        'sol_get_sysvar', 'sol_get_epoch_stake', 'sol_alloc_free_', 'sol_get_processed_sibling_instruction',
-       'sol_create_program_address', 'sol_try_find_program_address', 'sol_invoke_signed_c']
+       'sol_create_program_address', 'sol_try_find_program_address', 'sol_invoke_signed_c', 'sol_invoke_signed_rust']
 PDA_MARKER = b'ProgramDerivedAddress'
 MM_INPUT_W = word(4 << 32)
 HEAP_W = word(32 * 1024)
@@ -455,7 +455,7 @@ def program(m, name):
             x.consume(word(1500))
         return word(1)
 
-    if name == 'sol_invoke_signed_c':
+    if name in ('sol_invoke_signed_c', 'sol_invoke_signed_rust'):
         from .runtime import _invoke_c, IxError
         from .sref import VMError
         tx = m.ctx['tx']
@@ -464,7 +464,7 @@ def program(m, name):
         cu0 = unword(m.cu)
         base = tx.cu + cu0
         try:
-            cu1, _ = _invoke_c(m.ctx, regs_i, CircuitPort(x), cu0, unword(m.limit))
+            cu1, _ = _invoke_c(m.ctx, regs_i, CircuitPort(x), cu0, unword(m.limit), 'c' if name.endswith('_c') else 'rust')
         except (VMError, IxError) as e:
             m.cu = word(cu0 + (tx.cu - base), m.cu.shape[0])
             tx.cu = base - cu0

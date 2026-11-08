@@ -423,10 +423,10 @@ def run(prog, inp=b'', cu_limit=10000, gaps=True, funcs=None, trace=None, ro=Non
                 hi = dec(prog, pc + 1)[4] if pc + 1 < n else 0
                 r[d] = ((hi & M32) << 32) | (imm & M32)
                 nxt = pc + 2
-            elif kind == 'call' and (imm & M32) in syscalls and syscalls[imm & M32] == 'sol_invoke_signed_c' and ctx:
+            elif kind == 'call' and (imm & M32) in syscalls and syscalls[imm & M32] in ('sol_invoke_signed_c', 'sol_invoke_signed_rust') and ctx:
                 from .runtime import invoke_c, IxError
                 try:
-                    cu, r[0] = invoke_c(ctx, r, mem, cu, cu_limit)
+                    cu, r[0] = invoke_c(ctx, r, mem, cu, cu_limit, 'c' if syscalls[imm & M32].endswith('_c') else 'rust')
                 except IxError as e:
                     status, cu, ixerr = 'SysIx', e.cu_local, e.name
                     break

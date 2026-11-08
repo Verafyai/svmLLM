@@ -25,7 +25,7 @@ def ix_of(keys, k):
 
 def cpi_data(rng, keys, depth):
     """keys: the caller's account list (index -> key). Returns the CPI program's instruction data."""
-    mode = rng.choice([0, 0, 0, 1, 2, 4])
+    mode = rng.choice([0, 0, 0, 1, 2, 4]) | (8 if rng.random() < 0.5 else 0)
     target = rng.choice(['ex', 'ex', 'sys', 'self'] if depth < 6 else ['ex', 'sys'])
     pid = {'ex': EX, 'sys': SYS, 'self': CPI}[target]
     prog = keys.index(pid) if pid in keys and rng.random() < 0.95 else rng.randrange(len(keys))
