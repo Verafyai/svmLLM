@@ -247,6 +247,8 @@ for op, (kind, name, reg) in OPCODES.items():
         _dec[op, CI['is_alu']] = 1; _dec[op, CI['w32']] = 1; _dec[op, CI['alu_' + name]] = 1
     elif kind == 'end':
         _dec[op, CI['is_end']] = 1; _dec[op, CI['end_be']] = float(name == 'be')
+    elif kind == 'callx':
+        _dec[op, CI['is_call']] = 1                 # the full machine tells call and callx apart
     else:
         _dec[op, CI['is_' + kind]] = 1
     if kind == 'alu': _dec[op, CI['alu_' + name]] = 1

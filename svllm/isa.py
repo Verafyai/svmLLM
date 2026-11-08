@@ -41,6 +41,8 @@ LE, BE = 0xd4, 0xdc                    # byte order: imm = 16, 32 or 64
 OPCODES[LE] = ('end', 'le', False)
 OPCODES[BE] = ('end', 'be', False)
 OPCODES[CALL] = ('call', None, False)
+CALLX = 0x8d
+OPCODES[CALLX] = ('callx', None, False)       # target = r[imm] (SBPF v0)
 OPCODES[EXIT] = ('exit', None, False)
 OPCODES[LDDW] = ('lddw', None, False)
 
@@ -108,6 +110,8 @@ def assemble(text):
             out += enc(EXIT)
         elif mn == 'call':
             out += enc(CALL, imm=_int(args[0]))
+        elif mn == 'callx':
+            out += enc(CALLX, imm=_reg(args[0]))
         elif mn == 'lddw':
             v64 = _int(args[1]) & (2**64 - 1)
             lo, hi = v64 & 0xffffffff, v64 >> 32
@@ -180,4 +184,4 @@ def disasm_one(b, i):
     if kind == 'lddw':
         hi = dec(b, i + 1)[4] if len(b) >= (i + 2) * 8 else 0
         return f'lddw r{d}, 0x{((hi & 0xffffffff) << 32) | (imm & 0xffffffff):x}'
-    return {'call': f'call {imm}', 'exit': 'exit'}[kind]
+    return {'call': f'call {imm}', 'callx': f'callx r{imm}', 'exit': 'exit'}[kind]
