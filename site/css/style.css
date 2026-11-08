@@ -134,3 +134,17 @@ footer{padding:30px;text-align:center;color:var(--mut);border-top:1px solid var(
 .copybtn{font-size:13px;padding:7px 14px}
 .addr code{background:#17142a;border:1px solid var(--line);color:var(--txt)}
 .wgrid{margin-top:14px}
+/* full machine */
+.full-chips{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 18px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin:18px 0 10px}
+.gfig{margin:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.gfig img{display:block;width:100%;height:auto}.gfig figcaption{font-size:13px;color:var(--mut);padding:10px 12px}
+.show-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:14px}
+.show h4{margin:0;font-size:16px}.show-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.show p{margin:8px 0}.calls{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}.calls code{font-size:12px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;margin:8px 0}.kv span{color:var(--mut)}.kv b{font-family:var(--mono);font-weight:600;overflow-wrap:anywhere}
+.logs,.hex{background:#0c0a17;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;color:#cfe;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px}
+.tag.ok{color:#8ff0c8;border-color:#1f6b52;background:#0d2a21}.tag.bad{color:#ff9db0;border-color:#7a2a3a;background:#2a0f16}
+.jcard .reason{margin:10px 0 6px}
+.full-chips .chip b{color:var(--g)}
+.kv .v{justify-self:start}

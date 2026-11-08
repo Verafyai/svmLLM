@@ -30,7 +30,7 @@
  {
   "id": "drain",
   "title": "Valid by code, 9 SOL to a fresh address",
-  "story": "The same program, the same signature, 9 SOL: 360x the usual amount, to an address this wallet has never paid.",
+  "story": "The same program, the same signature, 9 SOL: 400x the usual amount, to an address this wallet has never paid.",
   "truth": {
    "ok": true,
    "err": null,

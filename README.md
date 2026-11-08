@@ -28,9 +28,10 @@ syscalls registered on mainnet, cross-program invocation through the C and Rust 
 Program and the rent check. Every piece is compared with LiteSVM 0.18.2 (Agave 4.3.2, mainnet
 feature set) or Anza's interpreter. Measured highlights: 600/600 random VM programs, 150/150 real
 compiled programs and 400/400 syscall runs on the weights; 2,500/2,500 CPI transactions and
-2,000/2,000 curve-syscall runs in the reference. The BN254 and BLS12-381 pairings are verified in
-the reference but are not in the weights. Full results, the rules learned from Agave, and what is
-outside the weights: [docs/FULL_SVM.md](docs/FULL_SVM.md).
+2,000/2,000 curve-syscall runs in the reference. All 38 syscalls run in the weights, including
+cross-program invocation's checks (16/16 CPI transactions on the weights) and both pairings. Full results, the rules learned from Agave, and what is
+outside the weights (the loader, account serialization, the driver loops and the System Program):
+[docs/FULL_SVM.md](docs/FULL_SVM.md). Live: [svmllm.rexstjohn.com](https://svmllm.rexstjohn.com/#full).
 
 ## How it works
 
@@ -333,7 +334,7 @@ The judgement filter is illustrative heuristics on synthetic histories, not a se
 
 ## Honest limitations
 
-- The sections below describe the original reduced machine. The full-SVM work and its limits (pairings not in the weights, no nonce accounts, no other builtins, one instruction per transaction, SBPF v0 only) are in [docs/FULL_SVM.md](docs/FULL_SVM.md).
+- The sections below describe the original reduced machine. The full-SVM work and its limits (host-side loader and serialization, no nonce accounts, no other builtins, one instruction per transaction, SBPF v0 only) are in [docs/FULL_SVM.md](docs/FULL_SVM.md).
 - Memory is two 128-byte windows and programs are at most 256 slots.
 - CU model is 1 per instruction. Real Solana pricing for syscalls and CPI is not modeled.
 - It is slow: CPU PyTorch on one thread, about 5 ms per simple instruction and roughly 65 ms for div or mod (lazy mode; full mode is slower). A research demo, not a validator.

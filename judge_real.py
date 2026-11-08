@@ -35,7 +35,7 @@ SOL = 10**9
 HIST = [(2 * SOL // 100, cp.A), (3 * SOL // 100, cp.A), (2 * SOL // 100, cp.A), (25 * SOL // 1000, cp.A)]   # 0.02-0.03 SOL to savings
 EXAMPLES = [
     ('routine', 'Routine transfer to savings', 'The wallet sends 0.025 SOL to its own savings account, as it has four times before.', cp.A, 25 * SOL // 1000, True),
-    ('drain', 'Valid by code, 9 SOL to a fresh address', 'The same program, the same signature, 9 SOL: 360x the usual amount, to an address this wallet has never paid.', cp.D, 9 * SOL, True),
+    ('drain', 'Valid by code, 9 SOL to a fresh address', 'The same program, the same signature, 9 SOL: 400x the usual amount, to an address this wallet has never paid.', cp.D, 9 * SOL, True),
     ('unsigned', 'The wallet did not sign', 'The program asks the System Program to move the wallet\'s lamports, but the wallet is not a signer. The runtime refuses before any judgement.', cp.A, SOL // 100, False),
 ]
 

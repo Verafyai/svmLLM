@@ -210,6 +210,28 @@
   "output": "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000"
  },
  {
+  "id": "bls-pairing",
+  "title": "BLS12-381: pairing product",
+  "story": "e(aG1, G2) * e(-G1, aG2): the check behind BLS signature aggregation. The 576-byte result is the identity of the target group.",
+  "calls": [
+   "sol_curve_pairing_map"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 38542,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 2316.4,
+  "returns": [
+   0
+  ],
+  "output": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
   "id": "fault",
   "title": "A bad pointer",
   "story": "Log 5,000 bytes from inside the program region: the translation circuit refuses it.",

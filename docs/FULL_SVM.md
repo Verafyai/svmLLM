@@ -27,16 +27,22 @@ Pass counts are all measured on this machine (2 CPU cores, no GPU).
 | VM: random programs with calls, gaps, every fault (seed 2026) | 600 | 600/600 (Anza) | 600/600 |
 | Real compiled programs (TinySVM's six, seed 12) | 150 | 150/150 | 150/150 |
 | Syscall exerciser, 29 non-curve syscalls (seed 101) | 400 | 400/400 | 400/400 |
-| CPI, C and Rust ABIs, System Program, rent (seeds 21, 33; weights seed 7) | 2,500 (16 on the weights) | 2,500/2,500 | 16/16 |
+| CPI, C and Rust ABIs, System Program, rent (seeds 21, 33; weights seed 7, CPI checks as circuits) | 2,500 (16 on the weights) | 2,500/2,500 | 16/16 |
 | Curve syscalls, all families incl. pairings (seed 11) | 2,000 | 2,000/2,000 | see below |
 | Curve syscalls in the weights, pairings left out (seed 41) | 24 | 24/24 | 24/24 |
+| Showcase programs, one per syscall family, both pairings included (`run_showcase.py`) | 12 | 12/12 | 12/12 |
+| Generated CPI transactions with distinct outcomes (`run_showcase.py cpi`) | 6 | 6/6 | 6/6 |
+| Real transactions reviewed by the judgement filter (`judge_real.py weights`) | 3 | 3/3 | 3/3 |
+| BN254 pairing-product check vs reference (`check_pairing.py bn`) | 1 | | match, 554 s |
+| BLS12-381 pairing, blst's exact Gt bytes vs reference (`check_pairing.py bls`) | 1 | | match, 2,158 s |
 
 Per family, reference vs LiteSVM: Ed25519 / Ristretto / secp256k1 1,500/1,500; BN254 800/800
 (every op, both endiannesses, both return codes seen); Poseidon 400/400; BLS12-381 500/500.
 
 Weights vs LiteSVM on curve syscalls (end to end, through the exerciser program): first run
 11/12 (the miss was a BLS case started before BLS was in the weights), second run 10/12 (both misses
-are pairing calls, which the weights do not implement; see below).
+were pairing calls, before the pairings were in the weights). Both pairings are now in the weights
+and each runs end to end inside a program in the showcase.
 
 Each curve operation in the weights was also checked byte for byte against the reference on its
 own: Ed25519 / Ristretto validate, add, sub, mul; secp256k1 recovery (valid and invalid); Poseidon
@@ -74,14 +80,22 @@ These came out of mismatches against LiteSVM, not from documentation:
 | Fetch, decode, ALU64 / ALU32, byte order, branches, calls and frames, address translation with stack gaps, CU meter | The driver loop and the syscall micro-step sequencing |
 | Every syscall's datapath: charges, budget check, translation, alignment and overlap checks, every byte moved, compared, hashed, formatted | ELF loading and relocation (Agave's loader produces the image) |
 | SHA-256, Keccak-256, base58, UTF-8 validation, hex / decimal / base64 formatting | Serializing accounts into the input region and deserializing them back |
-| Ed25519, Ristretto, secp256k1, Poseidon, BN254 (group ops, compression), BLS12-381 (validate, add, sub, mul, decompress) | CPI bookkeeping: privilege checks, account translation, the callee frame |
-| | The System Program and the rent check |
-| | **The BN254 and BLS12-381 pairings** (in the reference, verified, but not in the weights) |
+| Ed25519, Ristretto, secp256k1, Poseidon, BN254 and BLS12-381 (group ops, compression, both pairings) | Starting the callee program when a CPI asks for one |
+| CPI (`cpi_w.py`): C and Rust struct translation, privilege checks, PDA signers, reentrancy, depth and lamport-balance checks, costs, write-back | The System Program and the rent check |
 
-The pairings run their cost and translation steps in the weights and then stop with
-`Unsupported:pairing`. Estimated cost on the weights at the measured 30 ms per 255-bit field
-multiply: about 35 minutes for one BN254 pairing and about 2 hours for one BLS12-381 pairing
-(modeled, not measured).
+The transaction context (account table, instruction stack, meter total) is host state, as in Agave:
+the CPI circuits read it into one-hot rows and write back changed accounts.
+
+### Pairings (`pairing.py`, `cpairing.py`)
+
+One optimal-ate implementation over a backend. Fp12 is flat (six Fp2 coefficients of w, w^6 = xi),
+which is py_ecc's field with the same w and blst's tower flattened. Lines are evaluated up to Fp4
+factors (removed by the final exponentiation), the easy part uses conjugation, one inversion and
+Frobenius, and the hard part evaluates the base-p digits of (p^4 - p^2 + 1) / r in one shared
+square-and-multiply. The integer backend equals py_ecc exactly on both curves; the circuit backend
+batches each Fp12 product (108 unreduced products, 12 wide Barrett reductions). Measured, one
+thread: Fp12 multiply about 0.5 s (BN254) and 1.9 s (BLS12-381); a BN254 two-pair check 554 s;
+a BLS12-381 pairing 2,158 s.
 
 ### How the curve arithmetic runs
 
@@ -111,7 +125,6 @@ Measured on one thread, lazy mode, against Anza's interpreter on the same machin
 
 ## Not done
 
-- **Pairings in the weights** (above).
 - **System Program nonce accounts** (instructions 4, 5, 6, 7, 12) and CreateAccountAllowPrefund:
   they raise NotImplementedError in the runtime.
 - **Other builtins**: compute budget, the loaders, vote, stake. Only the System Program is a builtin here.
@@ -121,3 +134,5 @@ Measured on one thread, lazy mode, against Anza's interpreter on the same machin
 - **Transaction layer**: one instruction per transaction; no fee payer debit, signature
   verification, blockhash or account locking.
 - The runtime pieces listed as outside the weights.
+- Larger weights runs: weights batches are small because a CPI transaction takes minutes and a BLS
+  pairing over half an hour on one thread.

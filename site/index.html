@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SVMLLM: a Solana VM compiled into transformer weights</title>
-<meta name="description" content="SVMLLM runs reduced sBPF (the Solana VM bytecode) inside hand-built transformer weights: attention fetches, FFNs compute, DeltaNet state is exact RAM. No training.">
+<title>SVMLLM: the Solana VM in hand-set transformer weights</title>
+<meta name="description" content="SVMLLM runs Solana's sBPF VM and all 38 of its mainnet syscalls, cryptography and cross-program invocation included, inside hand-set transformer weights, checked byte for byte against Agave 4.3.2 through LiteSVM. Nothing is trained.">
 <meta property="og:title" content="SVMLLM: a Solana VM compiled into transformer weights">
 <meta property="og:description" content="sBPF programs executed by hand-built transformer weights, with exact results and compute-unit counts, plus a judgement filter that reviews outcomes.">
 <meta property="og:image" content="assets/og.png">
@@ -20,7 +20,7 @@
 <header class="top">
   <a class="brand" href="#"><img src="assets/svmllm-mark-transparent.png" alt="" width="30" height="30"><span>SVMLLM</span></a>
   <nav>
-    <a href="#how">How it works</a><a href="#demos">Demos</a><a href="#judge">Judgement filter</a><a href="#results">Results</a><a href="#run">Run it</a><a href="#where">Where it runs</a>
+    <a href="#full">Full SVM</a><a href="#how">How it works</a><a href="#demos">Demos</a><a href="#showcase">Real programs</a><a href="#judge">Judgement filter</a><a href="#results">Results</a><a href="#run">Run it</a><a href="#where">Where it runs</a>
     <a class="gh" href="https://github.com/Verafyai/svmLLM">GitHub</a>
   </nav>
 </header>
@@ -54,14 +54,27 @@
   </svg>
   <div class="hero-in">
     <img class="hero-logo" src="assets/svmllm-logo-transparent.png" alt="SVMLLM logo" width="260">
-    <h1>A Solana VM compiled into <span class="grad">transformer weights</span></h1>
-    <p class="lede">SVMLLM runs reduced sBPF, the bytecode of Solana programs, inside hand-constructed transformer components. Attention-style lookups fetch and decode instructions, ReLU feed-forward blocks are the ALU, and Gated DeltaNet state is exact RAM for registers and memory. Nothing is trained. Every result is checked against a reference interpreter, which is itself cross-checked against Anza's solana-sbpf.</p>
-    <div class="cta"><a class="btn primary" href="#demos">Run the demos</a><a class="btn" href="#how">See how it works</a><a class="btn ghost" href="https://github.com/Verafyai/svmLLM">GitHub: Verafyai/svmLLM</a><a class="btn ghost" href="https://divagr.com/blog/qwenputer">Based on Qwenputer</a></div>
+    <h1>The Solana VM, in <span class="grad">hand-set transformer weights</span></h1>
+    <p class="lede">SVMLLM runs sBPF, the bytecode every Solana program compiles to, inside hand-constructed transformer components: attention-style lookups fetch and decode, ReLU feed-forward blocks are the ALU, and Gated DeltaNet state is exact RAM. It started as a reduced toy. It now runs real compiled programs on Solana's memory map with the syscalls Agave registers on mainnet, cryptography included, and every result is checked against Agave 4.3.2 through LiteSVM. Nothing is trained.</p>
+    <div class="cta"><a class="btn primary" href="#full">What runs in the weights</a><a class="btn" href="#demos">Run the demos</a><a class="btn" href="#how">See how it works</a><a class="btn ghost" href="https://github.com/Verafyai/svmLLM">GitHub: Verafyai/svmLLM</a><a class="btn ghost" href="https://divagr.com/blog/qwenputer">Based on Qwenputer</a></div>
     <div class="chips" id="hero-chips"></div>
   </div>
 </section>
 
 <main>
+<section id="full" class="wrap">
+  <h2>From a toy to Agave 4.3.2's runtime</h2>
+  <p class="sub">The first release ran a reduced sBPF: two 128-byte memory windows, no syscalls, no accounts, no cross-program calls. The same method was then pushed as far as it would go. The interactive sections further down still use the reduced machine, because it runs in your browser. This section and <a href="#showcase">Real programs</a> are the full machine.</p>
+  <div class="full-chips" id="full-chips"></div>
+  <figure class="figure"><img src="assets/full-inout.png" alt="Three columns. In the weights: the VM, memory, all 38 syscalls and all the cryptography including both pairings. Host code, as in Agave: ELF loader, account serializer, driver loops, System Program and rent check. Not built: nonce accounts, other builtins, the transaction layer, SBPF v1 to v3."></figure>
+  <div class="two">
+    <div class="card"><h4>In the weights</h4><ul id="full-in"></ul></div>
+    <div class="card"><h4>Host code, as in Agave, and what is not built</h4><ul id="full-out"></ul></div>
+  </div>
+  <div class="gallery" id="full-gallery"></div>
+  <p class="muted small">Full write-up with every diagram, result and Agave rule found along the way: <a href="https://blog.verafy.ai/articles/20261107-the-solana-vm-in-hand-set-weights">the Verafy blog post</a>. Code and result files: <a href="https://github.com/Verafyai/svmLLM/blob/main/docs/FULL_SVM.md">docs/FULL_SVM.md</a>.</p>
+</section>
+
 <section id="how" class="wrap">
   <h2>How it works</h2>
   <p class="sub">One sBPF instruction is one pass through a fixed stack of hand-built blocks. Step through a real recorded run of the weights machine below; every value comes from <code>results/weights_traces.json</code>.</p>
@@ -145,6 +158,15 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
   </div>
 </section>
 
+<section id="showcase" class="wrap">
+  <h2>Real Solana programs on the weights</h2>
+  <p class="sub">These are not browser simulations. A real Solana program, compiled with <code>cargo-build-sbf</code> and loaded by Agave's own ELF loader, calls real syscalls. Each run was executed three times: on LiteSVM (Agave 4.3.2, mainnet features), on the reference VM, and on the hand-set weights. The cards show LiteSVM's outcome, whether the weights matched it exactly (status, compute units, every log line, every byte of account state) and how long the weights took on one CPU thread.</p>
+  <div class="show-grid" id="show-grid"></div>
+  <h3 class="mt">Cross-program invocation on the weights</h3>
+  <p class="sub">A program calling the System Program, the syscall exerciser or itself, through the C and Rust ABIs. The CPI syscall's translation, privilege checks, PDA signers, depth, reentrancy and balance checks, costs and write-back are circuits; running the callee is the driver's job, as running the caller is.</p>
+  <div class="show-grid" id="cpi-grid"></div>
+</section>
+
 <section id="judge" class="wrap">
   <h2>Judgement filter</h2>
   <blockquote class="motive">Some of the costliest smart-contract incidents involve code that ran exactly as written, with an outcome a sensible human operator would have stopped. Many others are ordinary bugs or key compromises; this project targets only the first kind. That first kind is what motivated this project: fuse the best of smart contracts (trustless, deterministic and decentralized execution) with the best of human intelligence (judgement based on context).</blockquote>
@@ -189,12 +211,23 @@ exit</textarea><div class="muted small" id="p-size"></div></div>
     <p class="muted small" id="prompt-sim-note">SIMULATED model output, no real LLM was called. The rule review is a heuristic outside the weights.</p>
   </div>
   <div class="jgrid" id="jgrid"></div>
+  <h3 class="mt">Judging real transactions</h3>
+  <p class="sub">With the full runtime, the review step no longer has to trust a toy program's exit code. It reads the actual outcome of a real transaction: which accounts lost and gained lamports, the program's logs, the compute units and the exact error if there was one. The examples below are real transactions (a program moving lamports through a System Program CPI) run on LiteSVM, the reference VM and the weights, then reviewed by the same rules as above. The rules are still heuristics outside the weights, and the model reply is still simulated.</p>
+  <div class="jgrid" id="jgrid-real"></div>
 </section>
 
 <section id="results" class="wrap">
   <h2>Test results</h2>
   <p class="sub">From <code>python run_tests.py</code>. Three independent executions are compared: the Python reference interpreter, Anza's <a href="https://github.com/anza-xyz/sbpf">solana-sbpf</a> 0.12 interpreter (Rust, SBPFVersion V0) and the weights machine. Status, r0, CU and the 128-byte input window are compared against solana-sbpf; the weights machine must also match every register and both memory windows.</p>
   <div class="card table-scroll"><table class="res" id="res-table"></table><p class="muted small" id="res-foot"></p></div>
+  <h3 class="mt">The full machine against Agave 4.3.2</h3>
+  <p class="sub">Ground truth is LiteSVM 0.18.2 (Agave 4.3.2's runtime with the mainnet feature set) and Anza's solana-sbpf 0.12. Every observable is compared: success or the exact error, compute units consumed, every program log line, and every account's lamports, owner and data afterwards. The weights runs are smaller than the reference runs because the weights are slow.</p>
+  <div class="card table-scroll"><table class="res" id="full-table"></table></div>
+  <h3 class="mt">Cryptography, family by family</h3>
+  <div class="card table-scroll"><table class="res" id="crypto-table"></table></div>
+  <h3 class="mt">Measured speed</h3>
+  <div class="card table-scroll"><table class="res" id="speed-table"></table><p class="muted small">One CPU thread. The VM numbers use the dense evaluation of every layer; the cryptography reads each lookup table at its one-hot input (the same values, without the zero terms).</p></div>
+  <figure class="figure"><img src="assets/full-verify.png" alt="Random cases go to the weights, the reference VM and LiteSVM or Anza; status, compute units, logs and every account's final state are compared byte for byte."></figure>
 </section>
 
 <section id="run" class="wrap">
@@ -206,6 +239,27 @@ python -m svllm.demo fibonacci 10        # one demo on the weights machine, with
 python -m svllm.judge                    # judgement-filter examples
 (cd xcheck && cargo build --release)     # optional: solana-sbpf cross-check
 python run_tests.py                      # full suite, writes results/</pre>
+  <h3 class="mt">The full machine</h3>
+  <p class="sub">On the <code>main</code> branch. Needs Rust and the Solana toolchain (<code>cargo-build-sbf</code>) to build the test programs and the two truth harnesses.</p>
+  <pre class="cmd">(cd truth && cargo build --release)                      # svmtruth, svmtx, elfimage: LiteSVM 0.18.2 / Agave 4.3.2
+(cd xcheck && cargo build --release)                     # svmcheck: Anza's interpreter with the full memory map
+(cd programs/exerciser && cargo build-sbf)              # calls every syscall from a tag byte
+(cd programs/cpi && cargo build-sbf)                    # a CPI driver, C and Rust ABIs
+
+N=600 SEED=2026 python3 run_full.py         # random VM programs: weights vs Anza
+KIND=tiny N=150 SEED=12 python3 run_programs.py   # real compiled programs: weights vs LiteSVM
+KIND=ex N=400 SEED=101 python3 run_programs.py    # the non-curve syscalls: weights vs LiteSVM
+python3 check_cpi.py 1000 21              # CPI transactions: reference vs LiteSVM
+python3 check_cpi.py 16 7 weights         # CPI on the weights (slow: about 6 min per transaction)
+python3 check_curves.py 2000 11 c25519,secp,poseidon,bn,bls        # curve syscalls, reference
+NOPAIR=1 python3 check_curves.py 24 41 c25519,secp,poseidon,bn,bls weights   # on the weights
+python3 check_pairing.py bn              # BN254 pairing on the weights vs the reference (about 10 min)
+python3 check_pairing.py bls             # BLS12-381 pairing: blst's exact Gt bytes (about 35 min)
+python3 run_showcase.py                  # the Real programs cards on this page
+python3 run_showcase.py cpi              # the CPI cards
+python3 judge_real.py weights            # the judged real transactions
+python3 make_full_summary.py && python3 export_full_site.py   # rebuild this page's data</pre>
+  <p class="sub">The two cards below describe the reduced machine that runs in this page. The full machine is described in <a href="#full">From a toy to Agave 4.3.2's runtime</a>.</p>
   <div class="two">
     <div class="card"><h4>What is in the weights</h4><ul>
       <li>Instruction fetch: one-hot PC query against DeltaNet program memory.</li>
@@ -221,16 +275,14 @@ python run_tests.py                      # full suite, writes results/</pre>
   </div>
   <div class="two">
     <div class="card"><h4>Honest limitations</h4><ul>
-      <li>Reduced sBPF: no ALU32, no syscalls (call is a stub that zeroes r0), no accounts, no CPI, no internal calls.</li>
-      <li>Memory is two 128-byte windows, not Solana's full regions. Programs are at most 256 slots.</li>
-      <li>CU model is 1 per instruction. Real Solana charges syscalls and CPI differently.</li>
+      <li>The in-browser machine is the reduced one: no ALU32, no syscalls, two 128-byte windows, 1 CU per instruction. The full machine (Solana's memory map, ALU32, calls, syscalls, accounts, CPI) runs in Python and is shown in <a href="#showcase">Real programs</a>.</li>
+      <li>Full machine: the ELF loader, account serialization and the System Program are host code, as in Agave. Nonce accounts, the other builtins, multi-instruction transactions and SBPF v1 to v3 (not active on mainnet) are not built.</li>
       <li>CPU PyTorch, about 5 ms per simple instruction and roughly 65 ms for div or mod on one thread. A demo, not a validator.</li>
       <li>The judge reply on this page is simulated. A single model that both runs the program and writes the review has not been tested.</li></ul></div>
     <div class="card"><h4>Future possibilities</h4><ul>
-      <li>Accounts: serialize Solana account data into the input window and enforce owner and writable rules.</li>
-      <li>Syscalls: sol_log, memcpy, sha256 as extra FFN circuits.</li>
-      <li>CPI and internal calls: a call stack in DeltaNet memory.</li>
-      <li>A real CU model per instruction class and syscall.</li>
+      <li>Done since launch: accounts, syscalls, CPI, internal calls, Agave's CU model. See <a href="#full">Full SVM</a>.</li>
+      <li>Move the remaining host code (serialization, the System Program) into circuits.</li>
+      <li>Run the full machine in the browser (it is Python and PyTorch today).</li>
       <li>Compile the same circuits into Qwenputer-style Qwen layers so a chat model can run sBPF in context.</li></ul></div>
   </div>
 </section>
@@ -271,5 +323,7 @@ python run_tests.py                      # full suite, writes results/</pre>
 <script src="js/core.js"></script>
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>
+<script src="js/full_data.js"></script>
+<script src="js/full.js"></script>
 </body>
 </html>
