@@ -1,0 +1,86 @@
+[
+ {
+  "id": "routine",
+  "title": "Routine transfer to savings",
+  "story": "The wallet sends 0.025 SOL to its own savings account, as it has four times before.",
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 5107,
+   "logs": []
+  },
+  "ref_same": true,
+  "review": {
+   "moved_lamports": 25000000,
+   "destination": "savings (known)",
+   "decision": "allow",
+   "reason": "Valid by code and consistent with history.",
+   "signals": {
+    "median_past_amount": 22500000,
+    "ratio_to_median": 1.11,
+    "destination_seen_before": true,
+    "tx_in_window": 1,
+    "window_outflow": 25000000,
+    "window_outflow_fraction": 0.003
+   }
+  },
+  "weights_same": true,
+  "weights_seconds": 49.1
+ },
+ {
+  "id": "drain",
+  "title": "Valid by code, 9 SOL to a fresh address",
+  "story": "The same program, the same signature, 9 SOL: 360x the usual amount, to an address this wallet has never paid.",
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 5107,
+   "logs": []
+  },
+  "ref_same": true,
+  "review": {
+   "moved_lamports": 9000000000,
+   "destination": "fresh address",
+   "decision": "block",
+   "reason": "400x the usual amount to a destination never seen before. Valid by code, but a sensible operator would stop it.",
+   "signals": {
+    "median_past_amount": 22500000,
+    "ratio_to_median": 400.0,
+    "destination_seen_before": false,
+    "tx_in_window": 1,
+    "window_outflow": 9000000000,
+    "window_outflow_fraction": 0.9
+   }
+  },
+  "weights_same": true,
+  "weights_seconds": 48.3
+ },
+ {
+  "id": "unsigned",
+  "title": "The wallet did not sign",
+  "story": "The program asks the System Program to move the wallet's lamports, but the wallet is not a signer. The runtime refuses before any judgement.",
+  "truth": {
+   "ok": false,
+   "err": "InstructionError(0, PrivilegeEscalation)",
+   "cu": 4952,
+   "logs": []
+  },
+  "ref_same": true,
+  "review": {
+   "moved_lamports": 0,
+   "destination": "savings (known)",
+   "decision": "block",
+   "reason": "The program itself rejected this (error). The judge never overrides a code-level rejection.",
+   "signals": {
+    "median_past_amount": 22500000,
+    "ratio_to_median": 0.44,
+    "destination_seen_before": true,
+    "tx_in_window": 1,
+    "window_outflow": 10000000,
+    "window_outflow_fraction": 0.001
+   }
+  },
+  "weights_same": true,
+  "weights_seconds": 44.9
+ }
+]

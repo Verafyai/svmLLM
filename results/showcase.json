@@ -1,0 +1,254 @@
+[
+ {
+  "id": "logs",
+  "title": "Logging",
+  "story": "Log a message, five numbers and the remaining compute units.",
+  "calls": [
+   "sol_log_",
+   "sol_log_64_",
+   "sol_log_compute_units_"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 436,
+   "logs": [
+    "Program log: hello from the weights",
+    "Program log: 0x1, 0x2, 0x3, 0x4, 0x5",
+    "Program consumption: 199581 units remaining"
+   ]
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 1.3,
+  "returns": [
+   0,
+   0,
+   0
+  ],
+  "output": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "id": "hash",
+  "title": "SHA-256 and Keccak-256",
+  "story": "Hash the bytes \"svmLLM\" both ways; the digests land in account memory.",
+  "calls": [
+   "sol_sha256",
+   "sol_keccak256"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 297,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 1.2,
+  "returns": [
+   0,
+   0
+  ],
+  "output": "ca6a1e386f65d2caff6f2bdb210c4447143b5555f3c7863c91f54c4d4da6536c0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "id": "pda",
+  "title": "Find a program-derived address",
+  "story": "Search bump seeds from 255 down until SHA-256(seeds, bump, program, marker) lands off the Ed25519 curve.",
+  "calls": [
+   "sol_try_find_program_address"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 1574,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 36.1,
+  "returns": [
+   0
+  ],
+  "output": "aa614e31cb88f0a2ad720196771f4ee37f7a2bf143e8be2cdeddd8f2fcf8a4850000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "id": "ed25519",
+  "title": "Ed25519: validate and add",
+  "story": "Check that 7B is on the curve, then add 7B + 11B. The result is 18B.",
+  "calls": [
+   "sol_curve_validate_point",
+   "sol_curve_group_op"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 738,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 44.5,
+  "returns": [
+   0,
+   0
+  ],
+  "output": "4ab075e0903e4e35b096d4d64e0e81bca5c3968aeae8e87d98d80b7e8426112e0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "id": "ristretto",
+  "title": "Ristretto: scalar multiply",
+  "story": "Multiply a Ristretto point by 123,456,789.",
+  "calls": [
+   "sol_curve_group_op"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 2282,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 79.6,
+  "returns": [
+   0
+  ],
+  "output": "f4d99da08edaef144eb8fbeee75fe3ed7f5a0ccc3345f719a93ac4e97d89da4e0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "id": "secp256k1",
+  "title": "secp256k1: recover a public key",
+  "story": "Ethereum-style signature recovery: the 64-byte public key that signed this hash.",
+  "calls": [
+   "sol_secp256k1_recover"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 25076,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 196.4,
+  "returns": [
+   0
+  ],
+  "output": "d415ef5d8acdf8b8626ce3f90f1afd286e17f4321f6f8325f1b5059eb808d7ae25ce238e208572384cc1525a7c7eb6c6d60b360f88a0f4120f34acba61d6a076"
+ },
+ {
+  "id": "poseidon",
+  "title": "Poseidon hash",
+  "story": "Poseidon (circom BN254 parameters) of the field elements 1 and 2.",
+  "calls": [
+   "sol_poseidon"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 860,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 18.6,
+  "returns": [
+   0
+  ],
+  "output": "115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a4417189a0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "id": "bn254",
+  "title": "BN254: add two points",
+  "story": "alt_bn128 G1 addition, the operation Ethereum-compatible verifiers lean on: 3G + 4G.",
+  "calls": [
+   "sol_alt_bn128_group_op"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 409,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 9.1,
+  "returns": [
+   0
+  ],
+  "output": "17072b2ed3bb8d759a5325f477629386cb6fc6ecb801bd76983a6b86abffe078168ada6cd130dd52017bb54bfa19377aadfe3bf05d18f41b77809f7f60d4af9e"
+ },
+ {
+  "id": "bn254-pairing",
+  "title": "BN254: pairing check",
+  "story": "e(aG, bH) * e(-abG, H) = 1: the check at the heart of a Groth16 proof verifier.",
+  "calls": [
+   "sol_alt_bn128_group_op"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 49061,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 973.7,
+  "returns": [
+   0
+  ],
+  "output": "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000"
+ },
+ {
+  "id": "fault",
+  "title": "A bad pointer",
+  "story": "Log 5,000 bytes from inside the program region: the translation circuit refuses it.",
+  "calls": [
+   "sol_log_"
+  ],
+  "cu_limit": 200000,
+  "truth": {
+   "ok": false,
+   "err": "InstructionError(0, ProgramFailedToComplete)",
+   "cu": 5057,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 0.3,
+  "returns": [],
+  "output": null
+ },
+ {
+  "id": "budget",
+  "title": "Out of compute units",
+  "story": "Three Ed25519 multiplies at 2,177 CU each under a 5,000 CU budget.",
+  "calls": [
+   "sol_curve_group_op",
+   "sol_curve_group_op",
+   "sol_curve_group_op"
+  ],
+  "cu_limit": 5000,
+  "truth": {
+   "ok": false,
+   "err": "InstructionError(0, ComputationalBudgetExceeded)",
+   "cu": 5000,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 94.9,
+  "returns": [],
+  "output": null
+ }
+]

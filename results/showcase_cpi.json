@@ -1,0 +1,88 @@
+[
+ {
+  "id": "ok-rust",
+  "what": "The CPI program calls the syscall exerciser through the Rust ABI.",
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 6942,
+   "logs": [
+    "Program log: \u0000\u0000\u0000\u0000\u0000",
+    "Program log: \u0000\u0000\u0000\u0000\u0000"
+   ]
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 80.4
+ },
+ {
+  "id": "ok-c",
+  "what": "The CPI program calls the syscall exerciser through the C ABI.",
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 5110,
+   "logs": [
+    "Program consumption: 194911 units remaining"
+   ]
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 51.6
+ },
+ {
+  "id": "ok-self",
+  "what": "The CPI program calls itself through the C ABI.",
+  "truth": {
+   "ok": true,
+   "err": null,
+   "cu": 9472,
+   "logs": [
+    "Program log: 0x4653cb9, 0xd7efff9e, 0x7c4b1c03, 0xea4e7659, 0x5a5ae5a7",
+    "Program log: 0x4653cb9, 0xd7efff9e, 0x7c4b1c03, 0xea4e7659, 0x5a5ae5a7"
+   ]
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 48.7
+ },
+ {
+  "id": "PrivilegeEscalation",
+  "what": "The CPI program calls the System Program through the C ABI, and aborts afterwards.",
+  "truth": {
+   "ok": false,
+   "err": "InstructionError(0, PrivilegeEscalation)",
+   "cu": 4978,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 23.5
+ },
+ {
+  "id": "ExternalAccountLamportSpend",
+  "what": "The CPI program calls itself through the Rust ABI, moving a lamport between accounts.",
+  "truth": {
+   "ok": false,
+   "err": "InstructionError(0, ExternalAccountLamportSpend)",
+   "cu": 6878,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 40.2
+ },
+ {
+  "id": "UnbalancedInstruction",
+  "what": "The CPI program calls itself through the Rust ABI.",
+  "truth": {
+   "ok": false,
+   "err": "InstructionError(0, UnbalancedInstruction)",
+   "cu": 11470,
+   "logs": []
+  },
+  "ref_same": true,
+  "weights_same": true,
+  "weights_seconds": 63.4
+ }
+]
